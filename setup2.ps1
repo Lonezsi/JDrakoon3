@@ -1,9 +1,11 @@
 # ------------------------------------------------------------
 # 2. Create couch-remote (Phone)
 # ------------------------------------------------------------
-Write-Host "`n[2/2] Building couch-remote..." -ForegroundColor Green
+Write-Host "`n[2/2] Building couch-remote" -ForegroundColor Green
 
-@"
+Push-Location couch-remote
+
+@'
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
@@ -11,17 +13,17 @@ import tailwindcss from '@tailwindcss/vite'
 export default defineConfig({
   plugins: [react(), tailwindcss()],
 })
-"@ | Out-File -FilePath vite.config.js -Encoding utf8
+'@ | Out-File -FilePath vite.config.js -Encoding utf8
 
-@"
+@'
 @import "tailwindcss";
-"@ | Out-File -FilePath src/index.css -Encoding utf8
+'@ | Out-File -FilePath src/index.css -Encoding utf8
 
 # Create directories
 mkdir src/services, src/hooks, src/components/tabs -Force
 
 # src/services/inputActions.js
-@"
+@'
 let sendFn = (action) => console.log('[mock] sendAction', action);
 
 export function setTransport(fn) {
@@ -79,10 +81,10 @@ export function home()     { sendAction(Actions.HOME); }
 export function start()    { sendAction(Actions.START); }
 export function menu()     { sendAction(Actions.MENU); }
 export function power()    { sendAction(Actions.POWER); }
-"@ | Out-File -FilePath src/services/inputActions.js -Encoding utf8
+'@ | Out-File -FilePath src/services/inputActions.js -Encoding utf8
 
 # src/services/socket.js
-@"
+@'
 const MOCK_STATE = {
   currentApp: 'home',
   currentScreen: 'HOME',
@@ -115,10 +117,10 @@ export function connect(url) {
     disconnect() {},
   };
 }
-"@ | Out-File -FilePath src/services/socket.js -Encoding utf8
+'@ | Out-File -FilePath src/services/socket.js -Encoding utf8
 
 # src/hooks/useConsoleState.js
-@"
+@'
 import { useState, useEffect } from 'react';
 import { connect } from '../services/socket';
 
@@ -145,10 +147,10 @@ export function onStateChange(fn) {
   subscriberSet.add(fn);
   return () => subscriberSet.delete(fn);
 }
-"@ | Out-File -FilePath src/hooks/useConsoleState.js -Encoding utf8
+'@ | Out-File -FilePath src/hooks/useConsoleState.js -Encoding utf8
 
 # src/components/Header.jsx
-@"
+@'
 import { useEffect, useState } from 'react';
 import { Tv, WifiOff } from 'lucide-react';
 import { useConsoleState } from '../hooks/useConsoleState';
@@ -209,10 +211,10 @@ export default function Header({ user }) {
     </div>
   );
 }
-"@ | Out-File -FilePath src/components/Header.jsx -Encoding utf8
+'@ | Out-File -FilePath src/components/Header.jsx -Encoding utf8
 
 # src/components/LoginScreen.jsx (original)
-@"
+@'
 import { useState } from 'react';
 import { Check, Tv } from 'lucide-react';
 
@@ -331,13 +333,13 @@ export default function LoginScreen({ onJoin }) {
     </div>
   );
 }
-"@ | Out-File -FilePath src/components/LoginScreen.jsx -Encoding utf8
+'@ | Out-File -FilePath src/components/LoginScreen.jsx -Encoding utf8
 
 # Now the tabs... We'll write RemoteTab, TouchpadTab, MediaTab, RoomTab.
 # Since they are large, we'll use here-strings for each.
 
 # RemoteTab.jsx
-@"
+@'
 import { useState } from 'react';
 import {
   ArrowUp, ArrowDown, ArrowLeft, ArrowRight,
@@ -459,10 +461,10 @@ export default function RemoteTab() {
     </div>
   );
 }
-"@ | Out-File -FilePath src/components/tabs/RemoteTab.jsx -Encoding utf8
+'@ | Out-File -FilePath src/components/tabs/RemoteTab.jsx -Encoding utf8
 
 # TouchpadTab.jsx
-@"
+@'
 import { useState, useRef } from 'react';
 import { Keyboard, CornerDownLeft } from 'lucide-react';
 import { sendAction, Actions } from '../../services/inputActions';
@@ -556,10 +558,10 @@ export default function TouchpadTab() {
     </div>
   );
 }
-"@ | Out-File -FilePath src/components/tabs/TouchpadTab.jsx -Encoding utf8
+'@ | Out-File -FilePath src/components/tabs/TouchpadTab.jsx -Encoding utf8
 
 # MediaTab.jsx
-@"
+@'
 import { useState } from 'react';
 import {
   Play, Pause, SkipForward, SkipBack, Volume2, VolumeX,
@@ -711,10 +713,10 @@ export default function MediaTab() {
     </div>
   );
 }
-"@ | Out-File -FilePath src/components/tabs/MediaTab.jsx -Encoding utf8
+'@ | Out-File -FilePath src/components/tabs/MediaTab.jsx -Encoding utf8
 
 # RoomTab.jsx
-@"
+@'
 import { Gamepad2 } from 'lucide-react';
 import { useConsoleState } from '../../hooks/useConsoleState';
 import { sendAction, Actions } from '../../services/inputActions';
@@ -781,10 +783,10 @@ export default function RoomTab() {
     </div>
   );
 }
-"@ | Out-File -FilePath src/components/tabs/RoomTab.jsx -Encoding utf8
+'@ | Out-File -FilePath src/components/tabs/RoomTab.jsx -Encoding utf8
 
 # src/App.jsx (phone)
-@"
+@'
 import { useState } from 'react';
 import LoginScreen from './components/LoginScreen';
 import Header from './components/Header';
@@ -871,7 +873,7 @@ export default function App() {
     </div>
   );
 }
-"@ | Out-File -FilePath src/App.jsx -Encoding utf8
+'@ | Out-File -FilePath src/App.jsx -Encoding utf8
 
 # Clean up default files
 Remove-Item src/assets -Recurse -Force
@@ -880,5 +882,3 @@ Remove-Item src/App.css -Force
 # Done
 cd ..
 Write-Host "`n✅ Both apps created successfully!" -ForegroundColor Green
-Write-Host "Run 'cd couch-console; npm run dev' to start the TV app."
-Write-Host "Run 'cd couch-remote; npm run dev' to start the phone app."
