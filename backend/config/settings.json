@@ -1,0 +1,22 @@
+{
+  "display": {
+    "fullscreen": true,
+    "crtEffect": true,
+    "volume": 80
+  },
+  "media": {
+    "defaultVolume": 72,
+    "cacheLimitGB": 20,
+    "preloadNext": true
+  },
+  "input": {
+    "deadzone": 0.25,
+    "repeatDelay": 300,
+    "repeatInterval": 60
+  },
+  "players": [],
+  "libraryFolders": [
+    "C:\\Program Files (x86)\\Steam\\steamapps\\common",
+    "C:\\Roms"
+  ]
+}
