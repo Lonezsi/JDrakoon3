@@ -15,7 +15,9 @@ export interface ExtendedWebSocket extends WebSocket {
 const clients = new Map<string, ExtendedWebSocket>();
 
 export function initWebSocketServer(httpServer: Server) {
-  const wss = new WebSocket.Server({ server: httpServer });
+  // Bind the legacy WebSocket server to the `/ws` path so it doesn't
+  // intercept Socket.IO's `/socket.io/` upgrade requests.
+  const wss = new WebSocket.Server({ server: httpServer, path: "/ws" });
 
   wss.on("connection", (ws: ExtendedWebSocket) => {
     ws.isAlive = true;

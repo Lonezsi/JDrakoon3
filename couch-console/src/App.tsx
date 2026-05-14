@@ -3,6 +3,7 @@ import { appState } from "./core/stateMachine";
 import { events } from "./core/events";
 import { launchApp } from "./services/launcherService";
 import { inputManager } from "./systems/input/inputManager";
+import { connect as connectSocket } from "./services/socket";
 import { useLobbyRenderer } from "./hooks/useLobbyRenderer";
 import { useGameLoop } from "./hooks/useGameLoop";
 import { useClock } from "./hooks/useClock";
@@ -43,7 +44,43 @@ export default function App() {
   useEffect(() => {
     if (state === "BOOT") return;
     const stop = inputManager.start();
-    return stop;
+    // wire input manager actions to backend transport
+    try {
+      const conn = connectSocket();
+      const unsubActions = inputManager.onActions((actions) => {
+        actions.forEach((a) => {
+          // Map local DeviceAction to backend message shapes
+          if (
+            a.type === "move" ||
+            a.type === "emote" ||
+            a.type === "jump" ||
+            a.type === "navigate" ||
+            a.type === "confirm"
+          ) {
+            conn.sendAction({ type: "action", action: a });
+          } else {
+            // Fallback: send as input containing analog/buttons if present
+            const msg: any = { type: "input" };
+            if ((a as any).value && typeof (a as any).value === "object")
+              msg.analog = (a as any).value;
+            if ((a as any).buttons) msg.buttons = (a as any).buttons;
+            conn.sendAction(msg);
+          }
+        });
+      });
+      // subscribe to server messages if needed
+      const unsubMsg = conn.subscribe((msg) => {
+        // minimal handling: log for now; later map to state machine
+        if (msg?.type) console.debug("server msg", msg.type, msg);
+      });
+      return () => {
+        unsubActions();
+        unsubMsg();
+        stop();
+      };
+    } catch (e) {
+      console.warn("socket connect failed", e);
+    }
   }, [state]);
 
   // Navigation

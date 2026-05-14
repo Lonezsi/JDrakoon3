@@ -1,0 +1,82 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Socket Client Demo</title>
+    <style>
+      body {
+        font-family:
+          system-ui,
+          Segoe UI,
+          Roboto,
+          Arial;
+        margin: 16px;
+      }
+    </style>
+  </head>
+  <body>
+    <h3>Phone Controller Demo</h3>
+    <button id="join">Join Lobby</button>
+    <button id="claim">Claim Control</button>
+    <button id="up">Up</button>
+    <button id="down">Down</button>
+    <button id="left">Left</button>
+    <button id="right">Right</button>
+    <button id="a">A</button>
+    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+    <script>
+      const socket = io("//" + location.hostname + ":3001", {
+        transports: ["websocket"],
+      });
+      let playerId = null;
+
+      socket.on("connect", () => console.log("connected", socket.id));
+      socket.on("lobby_state", (s) => console.log("lobby_state", s));
+      socket.on("queue_updated", (q) => console.log("queue", q));
+
+      document.getElementById("join").addEventListener("click", () => {
+        socket.emit("join", { name: "Phone" }, (res) => {
+          playerId = res.playerId;
+          console.log("joined", res);
+        });
+      });
+
+      function sendInput(buttons, analog) {
+        socket.emit("input:event", { buttons, analog }, (ack) => {
+          /* optional ack */
+        });
+      }
+
+      document
+        .getElementById("up")
+        .addEventListener("click", () =>
+          sendInput({ up: true }, { x: 0, y: -1 }),
+        );
+      document
+        .getElementById("down")
+        .addEventListener("click", () =>
+          sendInput({ down: true }, { x: 0, y: 1 }),
+        );
+      document
+        .getElementById("left")
+        .addEventListener("click", () =>
+          sendInput({ left: true }, { x: -1, y: 0 }),
+        );
+      document
+        .getElementById("right")
+        .addEventListener("click", () =>
+          sendInput({ right: true }, { x: 1, y: 0 }),
+        );
+      document
+        .getElementById("a")
+        .addEventListener("click", () => sendInput({ a: true }, {}));
+
+      document.getElementById("claim").addEventListener("click", () => {
+        socket.emit("input:claim", { target: "menu" }, (ack) =>
+          console.log("claim ack", ack),
+        );
+      });
+    </script>
+  </body>
+</html>

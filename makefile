@@ -5,7 +5,7 @@ CONSOLE_DIR = couch-console
 REMOTE_DIR = couch-remote
 FRONTEND_BUILD = $(BACKEND_DIR)\\frontend-build
 
-.PHONY: build clean run dev all help frontend backend console remote
+.PHONY: build clean run dev all help frontend backend console remote kill
 
 help:
 	@echo Available targets: build, clean, run, dev, frontend, backend
@@ -54,3 +54,10 @@ console:
 remote:
 	@echo Starting couch-remote...
 	cd $(REMOTE_DIR) && call npm run dev
+
+kill:
+	@echo Killing ports 3000, 3001, 5173, 5174...
+	@for %%p in (3000 3001 5173 5174) do ( \
+		for /f "tokens=5" %%a in ('netstat -ano ^| findstr :%%p ^| findstr LISTENING') do taskkill /F /PID %%a \
+	)
+	@echo Done.

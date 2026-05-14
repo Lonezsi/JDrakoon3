@@ -1,0 +1,113 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Pair Phone</title>
+    <style>
+      body {
+        font-family:
+          system-ui,
+          Segoe UI,
+          Roboto,
+          Arial;
+        margin: 16px;
+      }
+      img {
+        max-width: 100%;
+      }
+    </style>
+  </head>
+  <body>
+    <h3>Pair Phone</h3>
+    <p><button id="getToken">Request Token</button></p>
+    <div id="qr"></div>
+    <p>Or token: <span id="token"></span></p>
+    <p>
+      <button id="connect">Connect Socket</button>
+      <button id="claim">Claim Menu</button>
+      <button id="release">Release</button>
+      <button id="startHeart">Start Heartbeat</button>
+      <button id="stopHeart">Stop Heartbeat</button>
+      <span id="ownerStatus">Owner: none</span>
+    </p>
+    <pre id="log"></pre>
+
+    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+    <script>
+      const logEl = document.getElementById("log");
+      function log(msg) {
+        logEl.textContent += msg + "\n";
+      }
+
+      document
+        .getElementById("getToken")
+        .addEventListener("click", async () => {
+          const res = await fetch("/pair", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: "{}",
+          });
+          const j = await res.json();
+          if (j.ok) {
+            document.getElementById("token").textContent = j.token;
+            document.getElementById("qr").innerHTML =
+              `<img src="/pair/qr?_=${Date.now()}" alt="QR"/>`;
+            log("Got token: " + j.token);
+          } else log("Failed to get token");
+        });
+
+      let socket = null;
+      document.getElementById("connect").addEventListener("click", async () => {
+        const token = document.getElementById("token").textContent;
+        if (!token) return log("No token");
+        socket = io(location.origin, { auth: { token } });
+        socket.on("connect", () => log("connected " + socket.id));
+        socket.on("lobby_state", (s) =>
+          log(
+            "lobby_state seq=" + s.seq + " players=" + (s.players || []).length,
+          ),
+        );
+        socket.on("queue_updated", (q) => log("queue_updated seq=" + q.seq));
+        socket.on("input:ownership_updated", (u) => {
+          log("ownership " + JSON.stringify(u));
+          const owner = u.owner ? u.owner.ownerId || "unknown" : "none";
+          document.getElementById("ownerStatus").textContent =
+            "Owner: " + owner;
+        });
+
+        document.getElementById("claim").addEventListener("click", () => {
+          if (!socket) return log("not connected");
+          socket.emit("input:claim", { target: "menu", ttl: 30000 }, (res) =>
+            log("claim res " + JSON.stringify(res)),
+          );
+        });
+        document.getElementById("release").addEventListener("click", () => {
+          if (!socket) return log("not connected");
+          socket.emit("input:release", { target: "menu" }, (res) =>
+            log("release res " + JSON.stringify(res)),
+          );
+        });
+
+        let heartInterval = null;
+        document.getElementById("startHeart").addEventListener("click", () => {
+          if (!socket) return log("not connected");
+          if (heartInterval) return;
+          heartInterval = setInterval(() => {
+            socket.emit("input:heartbeat", { target: "menu" }, (res) =>
+              log("hb " + JSON.stringify(res)),
+            );
+          }, 10000);
+          log("heartbeat started");
+        });
+        document.getElementById("stopHeart").addEventListener("click", () => {
+          if (heartInterval) {
+            clearInterval(heartInterval);
+            heartInterval = null;
+            log("heartbeat stopped");
+          }
+        });
+      });
+    </script>
+  </body>
+</html>

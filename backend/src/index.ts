@@ -1,8 +1,10 @@
-﻿import express from "express";
+﻿import qrcode from "qrcode";
+import express from "express";
 import http from "http";
 import path from "path";
 import { initWebSocketServer } from "./websocket/server";
 import { setWss } from "./websocket/broadcast";
+import { initSocketIO } from "./socketio_server";
 import { lobbySync } from "./services/LobbySyncService";
 import { settingsService } from "./services/SettingsService";
 import { gameScanner } from "./services/GameScanner";
@@ -12,6 +14,7 @@ import logger from "./utils/logger";
 import fs from "fs";
 import { inputService } from "./services/InputService";
 import { broadcast } from "./websocket/broadcast";
+import { authService } from "./services/AuthService";
 
 async function bootstrap() {
   if (!fs.existsSync(CACHE_DIR)) fs.mkdirSync(CACHE_DIR, { recursive: true });
@@ -81,6 +84,47 @@ async function bootstrap() {
 
   const wss = initWebSocketServer(server);
   setWss(wss);
+
+  // Pairing endpoints: create and inspect short-lived pairing tokens
+  app.post("/pair", express.json(), (req, res) => {
+    const { meta, ttl, oneTime } = req.body || {};
+    const entry = authService.createPairToken(
+      meta,
+      typeof ttl === "number" ? ttl : undefined,
+      !!oneTime,
+    );
+    res.json({ ok: true, token: entry.token, expiresAt: entry.expiresAt });
+  });
+
+  app.get("/pair/:token", (req, res) => {
+    const t = req.params.token;
+    const info = authService.get(t);
+    if (!info) return res.status(404).json({ ok: false });
+    res.json({ ok: true, info });
+  });
+
+  // QR pairing: returns an SVG QR code containing the token (useful for displaying on TV)
+  app.get("/pair/qr", async (req, res) => {
+    const entry = authService.createPairToken({}, 2 * 60 * 1000, true);
+    const payload = JSON.stringify({ token: entry.token });
+    try {
+      const svg = await qrcode.toString(payload, {
+        type: "svg",
+        errorCorrectionLevel: "M",
+      });
+      res.type("image/svg+xml").send(svg);
+    } catch (err) {
+      res.status(500).json({ ok: false });
+    }
+  });
+
+  // Initialize Socket.IO alongside existing WebSocket server
+  try {
+    initSocketIO(server);
+    logger.info("Socket.IO initialized");
+  } catch (err) {
+    logger.warn("Failed to initialize Socket.IO:", err);
+  }
 
   lobbySync.start();
 

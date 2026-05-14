@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { connect as connectSocket } from "./services/socket";
 import LoginScreen from "./components/LoginScreen";
 import Header from "./components/Header";
 import RemoteTab from "./components/tabs/RemoteTab";
@@ -21,6 +22,12 @@ export default function App() {
 
   const join = (name, color) => {
     setUser({ name, color });
+    // connect socket transport for this user
+    try {
+      connectSocket(null, { name, color });
+    } catch (e) {
+      console.warn("socket connect failed", e);
+    }
     setScreen("MAIN");
   };
 
