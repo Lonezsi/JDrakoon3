@@ -15,7 +15,7 @@ export function TopBar({ clock, players }: TopBarProps) {
     <div className="flex justify-between items-start mb-2">
       <div className="flex items-center gap-4">
         <div className="w-12 h-12 bg-indigo-600 rounded-2xl flex items-center justify-center shadow-lg shadow-indigo-500/40 flex-shrink-0">
-          <img src="dragon.svg" alt="Dragon" />
+          <img src="drakoon.svg" alt="Drakoon" />
         </div>
         <div>
           <h1 className="text-xl font-black uppercase tracking-tight italic leading-none">
