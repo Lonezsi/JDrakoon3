@@ -46,3 +46,11 @@ run:
 dev:
 	@echo Starting backend (development)...
 	cd $(BACKEND_DIR) && npm run dev
+
+console:
+	@echo Starting couch-console...
+	cd $(CONSOLE_DIR) && npm run dev
+
+remote:
+	@echo Starting couch-remote...
+	cd $(REMOTE_DIR) && npm run dev
