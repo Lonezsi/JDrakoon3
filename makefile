@@ -5,7 +5,7 @@ CONSOLE_DIR = couch-console
 REMOTE_DIR = couch-remote
 FRONTEND_BUILD = $(BACKEND_DIR)\\frontend-build
 
-.PHONY: build clean run dev all help
+.PHONY: build clean run dev all help frontend backend console remote
 
 help:
 	@echo Available targets: build, clean, run, dev, frontend, backend
@@ -14,19 +14,19 @@ all: build run
 
 frontend:
 	@echo Building couch-console...
-	cd $(CONSOLE_DIR) && npm install && npm run build
+	cd $(CONSOLE_DIR) && call npm install && call npm run build
 	@echo Copying couch-console to backend/frontend-build...
 	if not exist $(FRONTEND_BUILD) mkdir $(FRONTEND_BUILD)
 	xcopy $(CONSOLE_DIR)\\dist\\* $(FRONTEND_BUILD) /E /I /Y
 	@echo Building couch-remote...
-	cd $(REMOTE_DIR) && npm install && npm run build
+	cd $(REMOTE_DIR) && call npm install && call npm run build
 	@echo Copying couch-remote to backend/frontend-build/phone...
 	if not exist $(FRONTEND_BUILD)\\phone mkdir $(FRONTEND_BUILD)\\phone
 	xcopy $(REMOTE_DIR)\\dist\\* $(FRONTEND_BUILD)\\phone /E /I /Y
 
 backend:
 	@echo Building backend...
-	cd $(BACKEND_DIR) && npm run build
+	cd $(BACKEND_DIR) && call npm run build
 
 build: frontend backend
 
@@ -41,16 +41,16 @@ clean:
 
 run:
 	@echo Starting backend (production)...
-	cd $(BACKEND_DIR) && npm start
+	cd $(BACKEND_DIR) && call npm start
 
 dev:
 	@echo Starting backend (development)...
-	cd $(BACKEND_DIR) && npm run dev
+	cd $(BACKEND_DIR) && call npm run dev
 
 console:
 	@echo Starting couch-console...
-	cd $(CONSOLE_DIR) && npm run dev
+	cd $(CONSOLE_DIR) && call npm run dev
 
 remote:
 	@echo Starting couch-remote...
-	cd $(REMOTE_DIR) && npm run dev
+	cd $(REMOTE_DIR) && call npm run dev
