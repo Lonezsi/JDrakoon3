@@ -1,9 +1,9 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { appState } from "./core/stateMachine";
 import { events } from "./core/events";
 import { launchApp } from "./services/launcherService";
 import { inputManager } from "./systems/input/inputManager";
-import { connect as connectSocket } from "./services/socket";
+import { connect, subscribe, sendAction } from "./services/socket";
 import { useLobbyRenderer } from "./hooks/useLobbyRenderer";
 import { useGameLoop } from "./hooks/useGameLoop";
 import { useClock } from "./hooks/useClock";
@@ -13,16 +13,26 @@ import { AppRunningOverlay } from "./ui/components/AppRunningOverlay";
 import { Notifications } from "./ui/components/Notifications";
 import { PhoneQR } from "./ui/components/PhoneQR";
 import { MOCK_APPS } from "./shared/constants";
-import type { AppState } from "./shared/types";
+import type { AppState, Player } from "./shared/types";
 
 export default function App() {
   const [state, setState] = useState<AppState>("BOOT");
   const [activeIndex, setActiveIndex] = useState(0);
-  const { mountRef, sceneRef } = useLobbyRenderer();
-  const gameState = useGameLoop(sceneRef);
+  const [remotePlayers, setRemotePlayers] = useState<Player[]>([]);
+
+  const gameState = useGameLoop();
   const clock = useClock();
 
-  // Boot → HOME after 2.6s
+  // Merge remote + local (keyboard) players, avoid duplicates by ID
+  const allPlayers = useMemo(() => {
+    const remoteIds = new Set(remotePlayers.map((p) => p.id));
+    const local = gameState.players.filter((p) => !remoteIds.has(p.id));
+    return [...remotePlayers, ...local];
+  }, [remotePlayers, gameState.players]);
+
+  const { mountRef, sceneRef } = useLobbyRenderer(allPlayers);
+
+  // Boot → HOME
   useEffect(() => {
     if (state !== "BOOT") return;
     const t = setTimeout(() => {
@@ -32,7 +42,68 @@ export default function App() {
     return () => clearTimeout(t);
   }, [state]);
 
-  // Sync with state machine (for later transitions)
+  // Connect to backend and handle lobby events
+  useEffect(() => {
+    if (state === "BOOT") return;
+    const socket = connect({ name: "TV Console", color: "#10b981" });
+
+    const unsub = subscribe((msg) => {
+      switch (msg.type) {
+        case "lobby_state":
+          setRemotePlayers(msg.players || []);
+          break;
+        case "player_joined":
+          setRemotePlayers((prev) => {
+            if (prev.find((p) => p.id === msg.id)) return prev;
+            return [...prev, msg];
+          });
+          break;
+        case "player_left":
+          setRemotePlayers((prev) => prev.filter((p) => p.id !== msg.playerId));
+          break;
+        default:
+          break;
+      }
+    });
+
+    return () => {
+      unsub();
+      socket?.disconnect();
+    };
+  }, [state]);
+
+  // Start input manager and forward actions to backend
+  useEffect(() => {
+    if (state === "BOOT") return;
+    const stop = inputManager.start();
+    const unsubActions = inputManager.onActions((actions) => {
+      actions.forEach((a) => {
+        if (
+          a.type === "move" ||
+          a.type === "emote" ||
+          a.type === "jump" ||
+          a.type === "navigate" ||
+          a.type === "confirm"
+        ) {
+          sendAction({ type: "action", payload: a });
+        } else {
+          // Fallback: send as raw input
+          const msg: any = { type: "input" };
+          if ((a as any).value && typeof (a as any).value === "object")
+            msg.analog = (a as any).value;
+          if ((a as any).buttons) msg.buttons = (a as any).buttons;
+          sendAction({ type: "input:event", payload: msg });
+        }
+      });
+    });
+
+    return () => {
+      unsubActions();
+      stop();
+    };
+  }, [state]);
+
+  // Sync with state machine for transitions
   useEffect(() => {
     const unsub = events.on("state:change", (newState: AppState) =>
       setState(newState),
@@ -40,50 +111,7 @@ export default function App() {
     return unsub;
   }, []);
 
-  // Start input manager after boot
-  useEffect(() => {
-    if (state === "BOOT") return;
-    const stop = inputManager.start();
-    // wire input manager actions to backend transport
-    try {
-      const conn = connectSocket();
-      const unsubActions = inputManager.onActions((actions) => {
-        actions.forEach((a) => {
-          // Map local DeviceAction to backend message shapes
-          if (
-            a.type === "move" ||
-            a.type === "emote" ||
-            a.type === "jump" ||
-            a.type === "navigate" ||
-            a.type === "confirm"
-          ) {
-            conn.sendAction({ type: "action", action: a });
-          } else {
-            // Fallback: send as input containing analog/buttons if present
-            const msg: any = { type: "input" };
-            if ((a as any).value && typeof (a as any).value === "object")
-              msg.analog = (a as any).value;
-            if ((a as any).buttons) msg.buttons = (a as any).buttons;
-            conn.sendAction(msg);
-          }
-        });
-      });
-      // subscribe to server messages if needed
-      const unsubMsg = conn.subscribe((msg) => {
-        // minimal handling: log for now; later map to state machine
-        if (msg?.type) console.debug("server msg", msg.type, msg);
-      });
-      return () => {
-        unsubActions();
-        unsubMsg();
-        stop();
-      };
-    } catch (e) {
-      console.warn("socket connect failed", e);
-    }
-  }, [state]);
-
-  // Navigation
+  // Navigation (still uses MOCK_APPS for now)
   useEffect(() => {
     const unsub = inputManager.onActions((actions) => {
       if (appState.current !== "HOME") return;
@@ -114,11 +142,15 @@ export default function App() {
       <div ref={mountRef} className="fixed inset-0 z-0 pointer-events-none" />
 
       <div
-        className={`h-full transition-all duration-700 ${state === "APP_RUNNING" ? "opacity-0 scale-95 blur-2xl pointer-events-none" : ""}`}
+        className={`h-full transition-all duration-700 ${
+          state === "APP_RUNNING"
+            ? "opacity-0 scale-95 blur-2xl pointer-events-none"
+            : ""
+        }`}
       >
         <DashboardLayout
           clock={clock}
-          players={gameState.players}
+          players={allPlayers}
           activeIndex={activeIndex}
           setActiveIndex={setActiveIndex}
         />

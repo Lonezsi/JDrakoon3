@@ -1,37 +1,54 @@
 import { io, Socket } from "socket.io-client";
 
-type Listener = (msg: any) => void;
+type MessageHandler = (msg: any) => void;
 
 let socket: Socket | null = null;
-let listeners: Listener[] = [];
+const handlers: MessageHandler[] = [];
 
 function notify(msg: any) {
-  listeners.forEach((fn) => fn(msg));
+  handlers.forEach((fn) => fn(msg));
 }
 
-export function connect(url?: string, opts: any = {}) {
+export function connect(
+  opts: {
+    url?: string;
+    name?: string;
+    color?: string;
+    token?: string;
+  } = {},
+) {
   const backendPort = 3001;
   const wsUrl =
-    url ||
+    opts.url ||
     (location.protocol === "https:" ? "wss://" : "ws://") +
       location.hostname +
       ":" +
       backendPort;
-  // Allow polling fallback; let Socket.IO handle upgrade to WebSocket
-  socket = io(wsUrl, { auth: { token: opts.token } });
 
-  socket.on("connect", () => {
-    if (opts.name)
-      socket.emit(
-        "join",
-        { name: opts.name, deviceType: "console" },
-        (res: any) => {
-          if (res && res.ok) notify({ type: "joined", playerId: res.playerId });
-        },
-      );
+  if (socket?.connected) return socket;
+
+  socket = io(wsUrl, {
+    auth: { token: opts.token },
+    transports: ["websocket", "polling"],
   });
 
-  const forward = [
+  socket.on("connect", () => {
+    if (opts.name) {
+      socket!.emit(
+        "join",
+        {
+          name: opts.name,
+          color: opts.color || "#6366f1",
+          deviceType: "console",
+        },
+        (res: any) => {
+          if (res?.ok) notify({ type: "joined", playerId: res.playerId });
+        },
+      );
+    }
+  });
+
+  const events = [
     "lobby_state",
     "queue_updated",
     "player_joined",
@@ -39,34 +56,30 @@ export function connect(url?: string, opts: any = {}) {
     "action",
     "input:ownership_updated",
   ];
-  forward.forEach((e) =>
-    socket!.on(e, (payload: any) => notify({ type: e, ...payload })),
-  );
+  events.forEach((event) => {
+    socket!.on(event, (payload: any) => notify({ type: event, ...payload }));
+  });
 
   socket.on("disconnect", () => notify({ type: "disconnect" }));
 
-  return {
-    subscribe(fn: Listener) {
-      listeners.push(fn);
-      return () => {
-        listeners = listeners.filter((l) => l !== fn);
-      };
-    },
-    sendAction(action: any) {
-      if (!socket || !socket.connected)
-        return console.warn("socket not connected");
-      // map action to socket.io events
-      const { type, payload } = action;
-      switch (type) {
-        default:
-          socket.emit("action", action);
-      }
-    },
-    disconnect() {
-      socket && socket.disconnect();
-      socket = null;
-    },
+  return socket;
+}
+
+export function getSocket() {
+  return socket;
+}
+
+export function subscribe(handler: MessageHandler) {
+  handlers.push(handler);
+  return () => {
+    handlers.splice(handlers.indexOf(handler), 1);
   };
 }
 
-export default { connect };
+export function sendAction(action: { type: string; payload?: any }) {
+  if (!socket?.connected) {
+    console.warn("Socket not connected");
+    return;
+  }
+  socket.emit(action.type, action.payload);
+}

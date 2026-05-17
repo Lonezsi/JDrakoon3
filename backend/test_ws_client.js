@@ -1,6 +1,6 @@
 const WebSocket = require("ws");
 const PORT = process.env.PORT || 3001;
-const url = `ws://localhost:${PORT}`;
+const url = `ws://localhost:${PORT}/ws`;
 
 console.log("Connecting to", url);
 const ws = new WebSocket(url);

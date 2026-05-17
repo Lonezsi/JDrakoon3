@@ -1,25 +1,29 @@
-import { useRef, useEffect, useState, useCallback } from 'react'
-import { LobbyScene } from '../scenes/lobby/LobbyScene'
+import { useRef, useEffect, useState, useCallback } from "react";
+import { LobbyScene } from "../scenes/lobby/LobbyScene";
+import type { Player } from "../shared/types";
 
-export function useLobbyRenderer() {
-  const [container, setContainer] = useState<HTMLDivElement | null>(null)
-  const sceneRef = useRef<LobbyScene | null>(null)
+export function useLobbyRenderer(allPlayers: Player[]) {
+  const [container, setContainer] = useState<HTMLDivElement | null>(null);
+  const sceneRef = useRef<LobbyScene | null>(null);
 
-  // Callback ref: sets state when the element mounts
   const mountRef = useCallback((node: HTMLDivElement | null) => {
-    if (node) setContainer(node)
-  }, [])
+    if (node) setContainer(node);
+  }, []);
 
   useEffect(() => {
-    if (!container) return
-    const scene = new LobbyScene()
-    scene.init(container)
-    sceneRef.current = scene
+    if (!container) return;
+    const scene = new LobbyScene();
+    scene.init(container);
+    sceneRef.current = scene;
     return () => {
-      scene.dispose()
-      sceneRef.current = null
-    }
-  }, [container])
+      scene.dispose();
+      sceneRef.current = null;
+    };
+  }, [container]);
 
-  return { mountRef, sceneRef }
+  useEffect(() => {
+    sceneRef.current?.syncEntities(allPlayers);
+  }, [allPlayers]);
+
+  return { mountRef, sceneRef };
 }

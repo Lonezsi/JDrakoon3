@@ -1,10 +1,8 @@
 ﻿import WebSocket from "ws";
 import { Server } from "http";
-import { v4 as uuidv4 } from "uuid";
 import logger from "../utils/logger";
 import { handleMessage } from "./handlers";
 import { broadcast } from "./broadcast";
-import { Player } from "../models/types";
 import { lobbySync } from "../services/LobbySyncService";
 
 export interface ExtendedWebSocket extends WebSocket {
@@ -15,9 +13,22 @@ export interface ExtendedWebSocket extends WebSocket {
 const clients = new Map<string, ExtendedWebSocket>();
 
 export function initWebSocketServer(httpServer: Server) {
-  // Bind the legacy WebSocket server to the `/ws` path so it doesn't
-  // intercept Socket.IO's `/socket.io/` upgrade requests.
-  const wss = new WebSocket.Server({ server: httpServer, path: "/ws" });
+  // noServer: true – no automatic upgrade listener
+  const wss = new WebSocket.Server({ noServer: true });
+
+  // Single upgrade handler that delegates to the correct server
+  httpServer.on("upgrade", (request, socket, head) => {
+    const url = new URL(request.url || "", "http://localhost");
+
+    if (url.pathname === "/ws") {
+      // Our legacy WebSocket
+      wss.handleUpgrade(request, socket, head, (ws) => {
+        wss.emit("connection", ws, request);
+      });
+    }
+    // For any other path (including /socket.io/) we do nothing,
+    // so Socket.IO's own upgrade listener will handle it.
+  });
 
   wss.on("connection", (ws: ExtendedWebSocket) => {
     ws.isAlive = true;
