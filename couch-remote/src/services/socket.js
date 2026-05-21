@@ -21,6 +21,7 @@ export function connect(url, opts = {}) {
   socket = io(wsUrl, { auth: { token: opts.token } });
 
   socket.on("connect", () => {
+    console.log("Connected to server via socket.io", opts.color);
     if (opts.name)
       socket.emit(
         "join",
@@ -50,55 +51,98 @@ export function connect(url, opts = {}) {
   setTransport((action) => {
     if (!socket || !socket.connected)
       return console.warn("socket not connected");
-    // Map action to socket.io events
+
     const { type, payload } = action;
+
     switch (type) {
+      // ── Cube movement (joystick) ──────────────────────────
+      case "CUBE_MOVE":
+        socket.emit("input:event", {
+          analog: {
+            x: payload?.x ?? 0,
+            y: payload?.y ?? 0,
+          },
+          buttons: {},
+        });
+        console.log("📱 Sending CUBE_MOVE:", payload);
+        break;
+
+      // ── Jump ──────────────────────────────────────────────
+      case "JUMP":
+        socket.emit("input:event", {
+          analog: { x: 0, y: 0 },
+          buttons: { jump: true },
+        });
+        console.log("📱 Sending JUMP");
+        break;
+
+      // ── Emote ─────────────────────────────────────────────
+      case "EMOTE":
+        socket.emit("action", {
+          type: "emote",
+          value: payload?.emote ?? "wave",
+        });
+        console.log("📱 Sending EMOTE:", payload?.emote);
+        break;
+
+      // ── Mouse / touchpad ─────────────────────────────────
       case "MOUSE_MOVE":
-        return socket.emit("input:event", {
+        socket.emit("input:event", {
           analog: { x: payload.dx || 0, y: payload.dy || 0 },
           buttons: {},
         });
+        break;
       case "MOUSE_CLICK":
-        return socket.emit("input:event", { buttons: { a: true } });
+        socket.emit("input:event", { buttons: { a: true } });
+        break;
       case "MOUSE_RIGHT_CLICK":
-        return socket.emit("input:event", { buttons: { b: true } });
+        socket.emit("input:event", { buttons: { b: true } });
+        break;
+
+      // ── Navigation (D‑pad) ────────────────────────────────
       case "NAV_UP":
       case "NAV_DOWN":
       case "NAV_LEFT":
       case "NAV_RIGHT":
-        return socket.emit("action", {
+        socket.emit("action", {
           type: "navigate",
           value: { direction: type.split("_")[1].toLowerCase() },
         });
+        break;
       case "CONFIRM":
-        return socket.emit("action", { type: "confirm" });
+        socket.emit("action", { type: "confirm" });
+        break;
+
+      // ── Scrolling / keyboard / text ───────────────────────
       case "SCROLL":
-        return socket.emit("action", {
-          type: "scroll",
-          value: { dy: payload.dy },
-        });
+        socket.emit("action", { type: "scroll", value: { dy: payload.dy } });
+        break;
       case "KEY_PRESS":
-        return socket.emit("action", {
-          type: "key",
-          value: { key: payload.key },
-        });
+        socket.emit("action", { type: "key", value: { key: payload.key } });
+        break;
       case "TEXT_INPUT":
-        return socket.emit("action", {
-          type: "text",
-          value: { text: payload.text },
-        });
+        socket.emit("action", { type: "text", value: { text: payload.text } });
+        break;
+
+      // ── Media controls ────────────────────────────────────
       case "MEDIA_PLAY_PAUSE":
-        return socket.emit("media_playpause");
+        socket.emit("media_playpause");
+        break;
       case "MEDIA_NEXT":
-        return socket.emit("media_next");
+        socket.emit("media_next");
+        break;
       case "MEDIA_PREV":
-        return socket.emit("media_prev");
+        socket.emit("media_prev");
+        break;
       case "ADD_TO_QUEUE":
-        return socket.emit("queue_add", payload.url);
+        socket.emit("queue_add", payload.url);
+        break;
       case "REMOVE_FROM_QUEUE":
-        return socket.emit("queue_remove", payload.index);
+        socket.emit("queue_remove", payload.index);
+        break;
+
       default:
-        return console.warn("unhandled action", action);
+        console.warn("unhandled action", action);
     }
   });
 

@@ -61,6 +61,11 @@ export default function App() {
         case "player_left":
           setRemotePlayers((prev) => prev.filter((p) => p.id !== msg.playerId));
           break;
+        case "input:event":
+        case "action":
+          sendAction(msg); // forward to backend
+          console.log("Received action from backend:", msg);
+          break;
         default:
           break;
       }

@@ -13,26 +13,10 @@ import {
   Repeat,
   Plus,
 } from "lucide-react";
+import { sendAction, Actions } from "../../services/inputActions";
+import { useConsoleState } from "../../hooks/useConsoleState";
 
-// ── Mock services — replace with your real imports ─────────────────────
-const Actions = {
-  MEDIA_PLAY_PAUSE: "MEDIA_PLAY_PAUSE",
-  MEDIA_PREV: "MEDIA_PREV",
-  MEDIA_NEXT: "MEDIA_NEXT",
-  MEDIA_SEEK: "MEDIA_SEEK",
-  MEDIA_VOLUME: "MEDIA_VOLUME",
-  MEDIA_MUTE: "MEDIA_MUTE",
-  ADD_TO_QUEUE: "ADD_TO_QUEUE",
-  REMOVE_FROM_QUEUE: "REMOVE_FROM_QUEUE",
-  MOVE_QUEUE_ITEM: "MOVE_QUEUE_ITEM",
-  CLEAR_QUEUE: "CLEAR_QUEUE",
-  LOOP_TOGGLE: "LOOP_TOGGLE",
-  SHUFFLE_QUEUE: "SHUFFLE_QUEUE",
-  PLAYBACK_SPEED: "PLAYBACK_SPEED",
-  SUBTITLES_TOGGLE: "SUBTITLES_TOGGLE",
-};
-const sendAction = (a, p) => console.log("action:", a, p);
-
+/* lets keep a reference for now
 const useMockState = () => ({
   playing: true,
   queue: [
@@ -50,28 +34,13 @@ const useMockState = () => ({
       duration: "3:42",
       color: "#22c55e",
     },
-    {
-      id: 3,
-      title: "Epic Cinematic Score",
-      channel: "AudioJungle",
-      duration: "4:11",
-      color: "#eab308",
-    },
-    {
-      id: 4,
-      title: "Jazz in the Rain",
-      channel: "Café del Mar",
-      duration: "6:05",
-      color: "#f87171",
-    },
   ],
   volume: 72,
   muted: false,
   progress: 34,
   loop: false,
   shuffle: true,
-});
-// ───────────────────────────────────────────────────────────────────────
+});*/
 
 // ── Animated equaliser bars ────────────────────────────────────────────
 function NowPlayingBars() {
@@ -244,7 +213,7 @@ function Thumb({ color, size = 48, radius = 10, title = "" }) {
 
 // ── Main component ─────────────────────────────────────────────────────
 export default function MediaTab() {
-  const media = useMockState(); // swap for useConsoleState
+  const media = useConsoleState();
   const [playing, setPlaying] = useState(media.playing);
   const [progress, setProgress] = useState(media.progress);
   const [volume, setVolume] = useState(media.volume);

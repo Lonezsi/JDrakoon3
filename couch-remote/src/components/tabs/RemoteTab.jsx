@@ -15,25 +15,16 @@ import {
   Triangle,
 } from "lucide-react";
 
-// ── Mock services — replace with your real imports ─────────────────────
-const Actions = {
-  CONFIRM: "CONFIRM",
-  BACK: "BACK",
-  FULLSCREEN: "FULLSCREEN",
-  MEDIA_VOLUME: "MEDIA_VOLUME",
-  KEY_PRESS: "KEY_PRESS",
-};
-const sendAction = (a, p) => console.log("action:", a, p);
-const navUp = () => sendAction("NAV_UP");
-const navDown = () => sendAction("NAV_DOWN");
-const navLeft = () => sendAction("NAV_LEFT");
-const navRight = () => sendAction("NAV_RIGHT");
-const confirm = () => sendAction("CONFIRM");
-const back = () => sendAction("BACK");
-const home = () => sendAction("HOME");
-const start = () => sendAction("START");
-const menu = () => sendAction("MENU");
-const power = () => sendAction("POWER");
+import { sendAction, Actions } from "../../services/inputActions";
+const navUp = () => sendAction(Actions.NAV_UP);
+const navDown = () => sendAction(Actions.NAV_DOWN);
+const navLeft = () => sendAction(Actions.NAV_LEFT);
+const navRight = () => sendAction(Actions.NAV_RIGHT);
+const back = () => sendAction(Actions.BACK);
+const home = () => sendAction(Actions.HOME);
+const start = () => sendAction(Actions.START);
+const menu = () => sendAction(Actions.MENU);
+const power = () => sendAction(Actions.POWER);
 // ───────────────────────────────────────────────────────────────────────
 
 // Physical-feel button with press animation (Tailwind + inline for dynamics)
@@ -282,7 +273,7 @@ export default function RemoteTab() {
         <div className="grid grid-cols-3 gap-1.5 items-center justify-items-center">
           <div />
           <PadBtn
-            onPress={confirm}
+            onPress={() => console.log("A pressed")}
             circle
             accent="#22c55e"
             extraStyle={{
