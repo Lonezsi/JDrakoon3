@@ -55,6 +55,8 @@ export function connect(
     "player_left",
     "action",
     "input:ownership_updated",
+    "action",
+    "input:event",
   ];
   events.forEach((event) => {
     socket!.on(event, (payload: any) => notify({ type: event, ...payload }));

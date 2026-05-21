@@ -20,6 +20,7 @@ const navUp = () => sendAction(Actions.NAV_UP);
 const navDown = () => sendAction(Actions.NAV_DOWN);
 const navLeft = () => sendAction(Actions.NAV_LEFT);
 const navRight = () => sendAction(Actions.NAV_RIGHT);
+const confirm = () => sendAction(Actions.CONFIRM);
 const back = () => sendAction(Actions.BACK);
 const home = () => sendAction(Actions.HOME);
 const start = () => sendAction(Actions.START);
@@ -137,7 +138,7 @@ function Joystick({ onMove, size = 50, knobSize = 48, accent = "#6366f1" }) {
 
     // Send normalised values
     const nx = dx / maxRadius; // -1 to 1
-    const ny = -(dy / maxRadius); // invert Y so up is positive
+    const ny = dy / maxRadius;
     onMove(nx, ny);
   };
 
@@ -273,7 +274,7 @@ export default function RemoteTab() {
         <div className="grid grid-cols-3 gap-1.5 items-center justify-items-center">
           <div />
           <PadBtn
-            onPress={() => console.log("A pressed")}
+            onPress={confirm}
             circle
             accent="#22c55e"
             extraStyle={{

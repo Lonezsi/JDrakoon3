@@ -220,7 +220,7 @@ export default function MediaTab() {
   const [muted, setMuted] = useState(media.muted);
   const [loop, setLoop] = useState(media.loop);
   const [shuffle, setShuffle] = useState(media.shuffle);
-  const [queue, setQueue] = useState(media.queue);
+  const [queue, setQueue] = useState(media.queue ?? []);
   const [newUrl, setNewUrl] = useState("");
 
   const currentVol = muted ? 0 : volume;

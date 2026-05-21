@@ -95,7 +95,10 @@ export default function App() {
         }
         // Navigation / confirm – handled locally for now; will be sent in Step 3
         else if (a.type === "navigate" || a.type === "confirm") {
-          // Not sent to backend yet – local UI navigation only
+          sendAction({
+            type: "action",
+            payload: a,
+          });
         }
       });
     });
