@@ -7,7 +7,7 @@ import Header from "./components/Header";
 import RemoteTab from "./components/tabs/RemoteTab";
 import TouchpadTab from "./components/tabs/TouchpadTab";
 import MediaTab from "./components/tabs/MediaTab";
-import { Gamepad2, MousePointer2, Play, Users } from "lucide-react";
+import { Gamepad2, MousePointer2, Play } from "lucide-react";
 
 const TABS = [
   { id: "REMOTE", Icon: Gamepad2, label: "Remote" },
@@ -25,30 +25,23 @@ export default function App() {
     const socket = connectSocket(null, { name, color });
 
     // Wire the transport to the socket
+    // inside join()
     setTransport((action) => {
-      // action = { type, payload }  (as called by sendAction)
       if (!socket || socket.readyState !== WebSocket.OPEN) return;
 
       let msg;
-
       if (action.type === Actions.CUBE_MOVE) {
         msg = {
           type: "input:event",
           payload: {
-            analog: {
-              x: action.payload?.x ?? 0,
-              y: action.payload?.y ?? 0,
-            },
+            analog: { x: action.payload?.x ?? 0, y: action.payload?.y ?? 0 },
             buttons: {},
           },
         };
       } else if (action.type === Actions.JUMP) {
         msg = {
           type: "input:event",
-          payload: {
-            analog: { x: 0, y: 0 },
-            buttons: { jump: true },
-          },
+          payload: { analog: { x: 0, y: 0 }, buttons: { jump: true } },
         };
       } else if (action.type === Actions.EMOTE) {
         msg = {
@@ -56,16 +49,10 @@ export default function App() {
           payload: { type: "emote", value: action.payload?.emote ?? "wave" },
         };
       } else {
-        // All other actions (media, nav, etc.) sent as generic action
-        msg = {
-          type: "action",
-          payload: action,
-        };
+        msg = { type: "action", payload: action };
       }
-
       socket.send(JSON.stringify(msg));
     });
-
     setScreen("MAIN");
   };
 

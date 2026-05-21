@@ -93,6 +93,7 @@ function NowPlayingBars() {
 }
 
 // ── Small icon button (queue controls, toggles, etc.) ─────────────────
+// eslint-disable-next-line no-unused-vars
 function IconBtn({
   onPress,
   children,

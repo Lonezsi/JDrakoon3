@@ -40,7 +40,7 @@ export default function TouchpadTab() {
     }
   };
 
-  const handleTap = (e) => {
+  const handleTap = () => {
     if (twoFinger) {
       sendAction(Actions.MOUSE_RIGHT_CLICK);
     } else {
@@ -83,6 +83,7 @@ export default function TouchpadTab() {
 
         {/* Keyboard input */}
         <div className="flex gap-1.5 items-center flex-1">
+          <Keyboard size={15} className="text-slate-400 flex-shrink-0" />
           <input
             type="text"
             value={inputText}

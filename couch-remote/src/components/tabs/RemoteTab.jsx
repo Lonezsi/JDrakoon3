@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import {
   ArrowUp,
   ArrowDown,
@@ -99,6 +99,93 @@ const Divider = () => (
   <div className="w-px h-[90px] bg-[#1c1c28] flex-shrink-0" />
 );
 
+// ── Analog joystick (touch / mouse) ──────────────────────────────
+function Joystick({ onMove, size = 50, knobSize = 48, accent = "#6366f1" }) {
+  const containerRef = useRef(null);
+  const knobRef = useRef(null);
+  const [active, setActive] = useState(false);
+  const center = { x: size / 2, y: size / 2 };
+
+  const handlePointerDown = (e) => {
+    setActive(true);
+    containerRef.current?.setPointerCapture(e.pointerId);
+    updateKnob(e);
+  };
+
+  const handlePointerMove = (e) => {
+    if (!active) return;
+    updateKnob(e);
+  };
+
+  const handlePointerUp = () => {
+    setActive(false);
+    // Reset to centre
+    if (knobRef.current) {
+      knobRef.current.style.transform = `translate(${center.x - knobSize / 2}px, ${center.y - knobSize / 2}px)`;
+    }
+    onMove(0, 0);
+  };
+
+  const updateKnob = (e) => {
+    const rect = containerRef.current.getBoundingClientRect();
+    let dx = e.clientX - rect.left - center.x;
+    let dy = e.clientY - rect.top - center.y;
+
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    const maxRadius = (size - knobSize) / 2;
+
+    if (dist > maxRadius) {
+      dx = (dx / dist) * maxRadius;
+      dy = (dy / dist) * maxRadius;
+    }
+
+    // Move the knob visually
+    if (knobRef.current) {
+      knobRef.current.style.transform = `translate(${dx + center.x - knobSize / 2}px, ${dy + center.y - knobSize / 2}px)`;
+    }
+
+    // Send normalised values
+    const nx = dx / maxRadius; // -1 to 1
+    const ny = -(dy / maxRadius); // invert Y so up is positive
+    onMove(nx, ny);
+  };
+
+  return (
+    <div
+      ref={containerRef}
+      onPointerDown={handlePointerDown}
+      onPointerMove={handlePointerMove}
+      onPointerUp={handlePointerUp}
+      onPointerLeave={handlePointerUp}
+      className="relative touch-none select-none cursor-pointer"
+      style={{ width: size, height: size }}
+    >
+      {/* Outer ring */}
+      <div
+        className="absolute inset-0 rounded-full border"
+        style={{
+          background: `${accent}10`,
+          borderColor: `${accent}25`,
+          boxShadow: `0 0 0 3px ${accent}10`,
+        }}
+      />
+      {/* Joystick knob */}
+      <div
+        ref={knobRef}
+        className="absolute rounded-full shadow-lg transition-transform duration-75"
+        style={{
+          width: knobSize,
+          height: knobSize,
+          background: `radial-gradient(circle at 30% 30%, ${accent}, ${accent}88)`,
+          top: 0,
+          left: 0,
+          transform: `translate(${center.x - knobSize / 2}px, ${center.y - knobSize / 2}px)`,
+        }}
+      />
+    </div>
+  );
+}
+
 export default function RemoteTab() {
   const [vol, setVol] = useState(72);
   const [muted, setMuted] = useState(false);
@@ -172,10 +259,12 @@ export default function RemoteTab() {
           <PadBtn onPress={navLeft}>
             <ArrowLeft size={18} />
           </PadBtn>
-          {/* D-pad center dot */}
-          <div className="w-12 h-12 rounded-full bg-[#6366f110] border border-[#6366f125] flex items-center justify-center">
-            <div className="w-[13px] h-[13px] rounded-full bg-[#6366f1] shadow-[0_0_10px_#6366f17a]" />
-          </div>
+          <Joystick
+            size={50} // slightly larger to fill the space
+            knobSize={20} // matches your button size
+            accent="#6366f1"
+            onMove={(x, y) => sendAction(Actions.CUBE_MOVE, { x, y })}
+          />
           <PadBtn onPress={navRight}>
             <ArrowRight size={18} />
           </PadBtn>
@@ -222,7 +311,7 @@ export default function RemoteTab() {
           </PadBtn>
           <div className="w-12 h-12" />
           <PadBtn
-            onPress={() => sendAction(Actions.CONFIRM)}
+            onPress={() => sendAction(Actions.JUMP)}
             circle
             accent="#3b82f6"
             extraStyle={{
@@ -237,7 +326,7 @@ export default function RemoteTab() {
 
           <div />
           <PadBtn
-            onPress={() => sendAction(Actions.BACK)}
+            onPress={() => sendAction(Actions.EMOTE, { emote: "wave" })}
             circle
             accent="#eab308"
             extraStyle={{

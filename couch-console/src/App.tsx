@@ -88,11 +88,6 @@ export default function App() {
           });
           console.log("Move action sent:", value);
         }
-        // Emotes & jump also go via input:event (buttons or action)
-        else if (a.type === "emote" || a.type === "jump") {
-          // Emotes can be sent as action for broadcast, but also need to move? keep as action for now
-          sendAction({ type: "action", payload: a });
-        }
         // Navigation / confirm – handled locally for now; will be sent in Step 3
         else if (a.type === "navigate" || a.type === "confirm") {
           // Not sent to backend yet – local UI navigation only
