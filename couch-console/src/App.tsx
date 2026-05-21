@@ -76,23 +76,26 @@ export default function App() {
   useEffect(() => {
     if (state === "BOOT") return;
     const stop = inputManager.start();
+
     const unsubActions = inputManager.onActions((actions) => {
       actions.forEach((a) => {
-        if (
-          a.type === "move" ||
-          a.type === "emote" ||
-          a.type === "jump" ||
-          a.type === "navigate" ||
-          a.type === "confirm"
-        ) {
+        // Movement: send as input:event with analog (backend handles physics)
+        if (a.type === "move") {
+          const value = a.value as { x: number; y: number };
+          sendAction({
+            type: "input:event",
+            payload: { analog: { x: value.x, y: value.y }, buttons: {} },
+          });
+          console.log("Move action sent:", value);
+        }
+        // Emotes & jump also go via input:event (buttons or action)
+        else if (a.type === "emote" || a.type === "jump") {
+          // Emotes can be sent as action for broadcast, but also need to move? keep as action for now
           sendAction({ type: "action", payload: a });
-        } else {
-          // Fallback: send as raw input
-          const msg: any = { type: "input" };
-          if ((a as any).value && typeof (a as any).value === "object")
-            msg.analog = (a as any).value;
-          if ((a as any).buttons) msg.buttons = (a as any).buttons;
-          sendAction({ type: "input:event", payload: msg });
+        }
+        // Navigation / confirm – handled locally for now; will be sent in Step 3
+        else if (a.type === "navigate" || a.type === "confirm") {
+          // Not sent to backend yet – local UI navigation only
         }
       });
     });

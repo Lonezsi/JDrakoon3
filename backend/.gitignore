@@ -133,3 +133,5 @@ dist
 Thumbs.db
 ehthumbs.db
 Desktop.ini
+
+frontend-build/

@@ -1,1 +1,9 @@
 @import "tailwindcss";
+
+html,
+body {
+  overscroll-behavior: none; /* stops the pull-to-refresh */
+  touch-action: none; /* prevents browser default gestures (optional) */
+  height: 100%;
+  overflow: hidden; /* optional – locks the viewport completely */
+}

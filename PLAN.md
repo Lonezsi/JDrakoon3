@@ -41,9 +41,9 @@ Follow each step sequentially, marking the checkbox `[x]` after verifying the st
 
 **Testing:**
 
-- [ ] Start backend, TV, and test client (`node test_socketio_client.js`).
-- [ ] A cube appears for the test client.
-- [ ] When the test client disconnects, the cube disappears.
+- [x] Start backend, TV, and test client (`node test_socketio_client.js`).
+- [x] A cube appears for the test client.
+- [x] When the test client disconnects, the cube disappears.
 
 ---
 

@@ -1,120 +1,301 @@
-import { useState } from 'react';
+import { useState } from "react";
 import {
-  ArrowUp, ArrowDown, ArrowLeft, ArrowRight,
-  Home, Power, Play, Pause, Volume2, VolumeX,
-  Maximize, Keyboard, MousePointer2, Gamepad2, Settings, X, Circle, Square, Triangle
-} from 'lucide-react';
-import {
-  sendAction, Actions,
-  navUp, navDown, navLeft, navRight, confirm, back, home, start, menu, power,
-} from '../../services/inputActions';
-import { useConsoleState } from '../../hooks/useConsoleState';
+  ArrowUp,
+  ArrowDown,
+  ArrowLeft,
+  ArrowRight,
+  Home,
+  Power,
+  Volume2,
+  VolumeX,
+  Maximize,
+  Keyboard,
+  MousePointer2,
+  Settings,
+  Triangle,
+} from "lucide-react";
 
-export default function RemoteTab() {
-  const state = useConsoleState();
-  const [vol, setVol] = useState(72);
-  const [muted, setMuted] = useState(false);
+// ── Mock services — replace with your real imports ─────────────────────
+const Actions = {
+  CONFIRM: "CONFIRM",
+  BACK: "BACK",
+  FULLSCREEN: "FULLSCREEN",
+  MEDIA_VOLUME: "MEDIA_VOLUME",
+  KEY_PRESS: "KEY_PRESS",
+};
+const sendAction = (a, p) => console.log("action:", a, p);
+const navUp = () => sendAction("NAV_UP");
+const navDown = () => sendAction("NAV_DOWN");
+const navLeft = () => sendAction("NAV_LEFT");
+const navRight = () => sendAction("NAV_RIGHT");
+const confirm = () => sendAction("CONFIRM");
+const back = () => sendAction("BACK");
+const home = () => sendAction("HOME");
+const start = () => sendAction("START");
+const menu = () => sendAction("MENU");
+const power = () => sendAction("POWER");
+// ───────────────────────────────────────────────────────────────────────
 
-  const currentScreen = state?.currentScreen || 'HOME';
+// Physical-feel button with press animation (Tailwind + inline for dynamics)
+function PadBtn({
+  onPress,
+  children,
+  circle,
+  accent,
+  size = 48,
+  extraStyle = {},
+}) {
+  const [down, setDown] = useState(false);
 
-  // Context-aware button labels
-  const getABXYLabels = () => {
-    switch (currentScreen) {
-      case 'HOME': return { A: 'Launch', B: 'Back', X: 'Info', Y: 'Settings' };
-      case 'APP_RUNNING': return { A: 'Select', B: 'Back', X: 'Menu', Y: 'Options' };
-      default: return { A: 'A', B: 'B', X: 'X', Y: 'Y' };
-    }
+  const press = (e) => {
+    e.preventDefault();
+    setDown(true);
+    onPress?.();
   };
-  const labels = getABXYLabels();
+  const lift = () => setDown(false);
+
+  // static Tailwind classes
+  const baseClasses = `flex items-center justify-center flex-shrink-0 
+    border-2 cursor-pointer outline-none select-none 
+    transition-transform duration-[70ms]`;
+
+  // circle or rounded
+  const radiusClass = circle ? "rounded-full" : "rounded-[11px]";
+
+  // dynamic border color (accent or default)
+  const borderColor = accent ? `${accent}45` : "#70708a05";
 
   return (
-    <div className="flex flex-col gap-5 pt-3 h-full">
-      {/* System bar */}
-      <div className="flex justify-between items-center">
-        <button onClick={home} className="p-3 rounded-2xl bg-white/5 border border-white/10 active:scale-90">
-          <Home size={18} className="text-slate-300" />
-        </button>
-        <button onClick={back} className="p-3 rounded-2xl bg-white/5 border border-white/10 active:scale-90">
-          <ArrowLeft size={18} className="text-slate-300" />
-        </button>
-        <button onClick={start} className="p-3 rounded-2xl bg-white/5 border border-white/10 active:scale-90">
-          <Triangle size={18} className="text-slate-300" />
-        </button>
-        <button onClick={menu} className="p-3 rounded-2xl bg-white/5 border border-white/10 active:scale-90">
-          <Settings size={18} className="text-slate-300" />
-        </button>
-        <button onClick={power} className="p-3 rounded-2xl bg-red-500/10 border border-red-500/20 active:scale-90 text-red-400">
-          <Power size={18} />
-        </button>
+    <button
+      onMouseDown={press}
+      onMouseUp={lift}
+      onMouseLeave={lift}
+      onTouchStart={press}
+      onTouchEnd={lift}
+      onTouchCancel={lift}
+      className={`${baseClasses} ${radiusClass}`}
+      style={{
+        width: size,
+        height: size,
+        borderColor: borderColor,
+        background: down ? "#00000004" : "#ffffff04",
+        boxShadow: down
+          ? "none"
+          : "0 3px 0 #06060a, inset 0 1px 0 rgba(255,255,255,0.055)",
+        color: "#70708a",
+        transform: down ? "translateY(2px)" : "none",
+        WebkitTapHighlightColor: "transparent",
+        fontFamily: "inherit",
+        ...extraStyle,
+      }}
+    >
+      {children}
+    </button>
+  );
+}
+
+// Thin visual divider between D-pad and ABXY
+const Divider = () => (
+  <div className="w-px h-[90px] bg-[#1c1c28] flex-shrink-0" />
+);
+
+export default function RemoteTab() {
+  const [vol, setVol] = useState(72);
+  const [muted, setMuted] = useState(false);
+  const currentVol = muted ? 0 : vol;
+
+  return (
+    <div
+      className="h-full min-h-[-webkit-fill-available] flex flex-col overflow-hidden gap-2.5 select-none"
+      style={{
+        padding:
+          "calc(14px + env(safe-area-inset-top, 0px)) 20px calc(14px + env(safe-area-inset-bottom, 0px))",
+        boxSizing: "border-box",
+        fontFamily: "'SF Mono', 'Roboto Mono', ui-monospace, monospace",
+        WebkitUserSelect: "none",
+        userSelect: "none",
+      }}
+    >
+      {/* Slider custom styles */}
+      <style>{`
+        .rv-slider {
+          -webkit-appearance: none; appearance: none;
+          height: 3px; border-radius: 2px; outline: none; cursor: pointer;
+          background: linear-gradient(
+            to right,
+            #6366f1 ${currentVol}%,
+            #202030 ${currentVol}%
+          );
+        }
+        .rv-slider::-webkit-slider-thumb {
+          -webkit-appearance: none;
+          width: 14px; height: 14px; border-radius: 50%;
+          background: #6366f1; cursor: pointer;
+          box-shadow: 0 0 0 3px #6366f120;
+        }
+        .rv-slider::-moz-range-thumb {
+          width: 14px; height: 14px; border-radius: 50%;
+          background: #6366f1; border: none; cursor: pointer;
+        }
+      `}</style>
+
+      {/* ── System bar ───────────────────────────────────────────── */}
+      <div className="flex max-h-[30px] mb-1 justify-between items-center">
+        <PadBtn onPress={home}>
+          <Home size={17} />
+        </PadBtn>
+        <PadBtn onPress={back}>
+          <ArrowLeft size={17} />
+        </PadBtn>
+        <PadBtn onPress={start}>
+          <Triangle size={17} />
+        </PadBtn>
+        <PadBtn onPress={menu}>
+          <Settings size={17} />
+        </PadBtn>
+        <PadBtn onPress={power} accent="#f87171">
+          <Power size={17} />
+        </PadBtn>
       </div>
 
-      {/* D-Pad + ABXY */}
-      <div className="flex items-center justify-between flex-1">
-        {/* D-Pad */}
-        <div className="grid grid-cols-3 gap-1.5 w-36">
-          <div></div>
-          <button onTouchStart={navUp} onMouseDown={navUp} className="p-4 rounded-2xl bg-white/5 border border-white/10 active:scale-90 text-slate-300">
-            <ArrowUp size={22} />
-          </button>
-          <div></div>
-          <button onTouchStart={navLeft} onMouseDown={navLeft} className="p-4 rounded-2xl bg-white/5 border border-white/10 active:scale-90 text-slate-300">
-            <ArrowLeft size={22} />
-          </button>
-          <div className="p-4 rounded-full bg-indigo-600/20 border border-indigo-500/30"></div>
-          <button onTouchStart={navRight} onMouseDown={navRight} className="p-4 rounded-2xl bg-white/5 border border-white/10 active:scale-90 text-slate-300">
-            <ArrowRight size={22} />
-          </button>
-          <div></div>
-          <button onTouchStart={navDown} onMouseDown={navDown} className="p-4 rounded-2xl bg-white/5 border border-white/10 active:scale-90 text-slate-300">
-            <ArrowDown size={22} />
-          </button>
-          <div></div>
+      {/* ── Face plate ───────────────────────────────────────────── */}
+      <div className="flex-1 min-h-0 flex items-center justify-evenly rounded-[22px] border border-[#1c1c26] shadow-[inset_0_2px_10px_rgba(0,0,0,0.45)] overflow-hidden">
+        {/* D-pad */}
+        <div className="grid grid-cols-3 gap-1.5 items-center justify-items-center">
+          {/* row 1 */}
+          <div />
+          <PadBtn onPress={navUp}>
+            <ArrowUp size={18} />
+          </PadBtn>
+          <div />
+          {/* row 2 */}
+          <PadBtn onPress={navLeft}>
+            <ArrowLeft size={18} />
+          </PadBtn>
+          {/* D-pad center dot */}
+          <div className="w-12 h-12 rounded-full bg-[#6366f110] border border-[#6366f125] flex items-center justify-center">
+            <div className="w-[13px] h-[13px] rounded-full bg-[#6366f1] shadow-[0_0_10px_#6366f17a]" />
+          </div>
+          <PadBtn onPress={navRight}>
+            <ArrowRight size={18} />
+          </PadBtn>
+          {/* row 3 */}
+          <div />
+          <PadBtn onPress={navDown}>
+            <ArrowDown size={18} />
+          </PadBtn>
+          <div />
         </div>
 
-        {/* ABXY */}
-        <div className="grid grid-cols-3 gap-2 w-36">
-          <div></div>
-          <button onTouchStart={() => confirm()} onMouseDown={() => confirm()} className="p-4 rounded-full bg-green-500/20 border border-green-500/30 active:scale-90 text-green-400 font-black text-xs">
+        <Divider />
+
+        {/* ABXY diamond */}
+        <div className="grid grid-cols-3 gap-1.5 items-center justify-items-center">
+          <div />
+          <PadBtn
+            onPress={confirm}
+            circle
+            accent="#22c55e"
+            extraStyle={{
+              fontWeight: 800,
+              fontSize: 13,
+              letterSpacing: 0.5,
+              color: "#4ade80",
+            }}
+          >
             A
-          </button>
-          <div></div>
-          <button onTouchStart={back} onMouseDown={back} className="p-4 rounded-full bg-red-500/20 border border-red-500/30 active:scale-90 text-red-400 font-black text-xs">
+          </PadBtn>
+          <div />
+
+          <PadBtn
+            onPress={back}
+            circle
+            accent="#ef4444"
+            extraStyle={{
+              fontWeight: 800,
+              fontSize: 13,
+              letterSpacing: 0.5,
+              color: "#f87171",
+            }}
+          >
             B
-          </button>
-          <div className="p-4 rounded-full bg-indigo-600/20 border border-indigo-500/30"></div>
-          <button onTouchStart={() => sendAction(Actions.CONFIRM)} onMouseDown={() => sendAction(Actions.CONFIRM)} className="p-4 rounded-full bg-blue-500/20 border border-blue-500/30 active:scale-90 text-blue-400 font-black text-xs">
+          </PadBtn>
+          <div className="w-12 h-12" />
+          <PadBtn
+            onPress={() => sendAction(Actions.CONFIRM)}
+            circle
+            accent="#3b82f6"
+            extraStyle={{
+              fontWeight: 800,
+              fontSize: 13,
+              letterSpacing: 0.5,
+              color: "#60a5fa",
+            }}
+          >
             X
-          </button>
-          <div></div>
-          <button onTouchStart={() => sendAction(Actions.BACK)} onMouseDown={() => sendAction(Actions.BACK)} className="p-4 rounded-full bg-yellow-500/20 border border-yellow-500/30 active:scale-90 text-yellow-400 font-black text-xs">
+          </PadBtn>
+
+          <div />
+          <PadBtn
+            onPress={() => sendAction(Actions.BACK)}
+            circle
+            accent="#eab308"
+            extraStyle={{
+              fontWeight: 800,
+              fontSize: 13,
+              letterSpacing: 0.5,
+              color: "#facc15",
+            }}
+          >
             Y
-          </button>
-          <div></div>
+          </PadBtn>
+          <div />
         </div>
       </div>
 
-      {/* Bottom controls */}
-      <div className="flex items-center gap-3 justify-between">
-        <button onClick={() => sendAction(Actions.FULLSCREEN)} className="p-3 rounded-2xl bg-white/5 border border-white/10 active:scale-90 text-slate-400">
-          <Maximize size={18} />
+      {/* ── Bottom controls ──────────────────────────────────────── */}
+      <div className="flex items-center gap-2 max-h-[15px] mt-2 mb-1">
+        <PadBtn onPress={() => sendAction(Actions.FULLSCREEN)} size={42}>
+          <Maximize size={15} />
+        </PadBtn>
+
+        <button
+          onClick={() => setMuted((m) => !m)}
+          className="bg-transparent border-none px-1 py-[6px] text-[#3c3c50] cursor-pointer flex items-center flex-shrink-0"
+        >
+          {muted ? <VolumeX size={17} /> : <Volume2 size={17} />}
         </button>
-        <div className="flex items-center gap-2 flex-1">
-          <button onClick={() => setMuted(m => !m)} className="p-2 text-slate-500 active:text-white">
-            {muted ? <VolumeX size={18} /> : <Volume2 size={18} />}
-          </button>
-          <input type="range" min={0} max={100} value={muted ? 0 : vol}
-            onChange={e => { setVol(+e.target.value); setMuted(false); sendAction(Actions.MEDIA_VOLUME, { volume: +e.target.value }); }}
-            className="flex-1 h-1.5 appearance-none rounded-full"
-            style={{ accentColor: '#6366f1' }}
-          />
-          <span className="text-xs font-black text-slate-600 w-7">{muted ? 0 : vol}</span>
-        </div>
-        <button onClick={() => sendAction(Actions.KEY_PRESS, { key: 'Keyboard' })} className="p-3 rounded-2xl bg-white/5 border border-white/10 active:scale-90 text-slate-400">
-          <Keyboard size={18} />
-        </button>
-        <button onClick={() => sendAction(Actions.KEY_PRESS, { key: 'Touchpad' })} className="p-3 rounded-2xl bg-white/5 border border-white/10 active:scale-90 text-slate-400">
-          <MousePointer2 size={18} />
-        </button>
+
+        <input
+          type="range"
+          min={0}
+          max={100}
+          step={1}
+          value={currentVol}
+          onChange={(e) => {
+            setVol(+e.target.value);
+            setMuted(false);
+            sendAction(Actions.MEDIA_VOLUME, { volume: +e.target.value });
+          }}
+          className="rv-slider flex-1"
+        />
+
+        <span className="text-[11px] font-bold text-[#2e2e40] min-w-[22px] text-right">
+          {currentVol}
+        </span>
+
+        <PadBtn
+          onPress={() => sendAction(Actions.KEY_PRESS, { key: "Keyboard" })}
+          size={42}
+        >
+          <Keyboard size={15} />
+        </PadBtn>
+        <PadBtn
+          onPress={() => sendAction(Actions.KEY_PRESS, { key: "Touchpad" })}
+          size={42}
+        >
+          <MousePointer2 size={15} />
+        </PadBtn>
       </div>
     </div>
   );
