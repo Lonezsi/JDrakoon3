@@ -46,16 +46,29 @@ export default function App() {
   useEffect(() => {
     if (state === "BOOT") return;
 
+    //spawn a cube for each player but not for console
+    const socket = connect({
+      name: "Console",
+      color: "#000000",
+      deviceType: "console",
+    });
+
     const unsub = subscribe((msg) => {
       switch (msg.type) {
         case "lobby_state":
-          setRemotePlayers(msg.players || []);
+          setRemotePlayers(
+            (msg.players || []).filter(
+              (p: Player) => p.deviceType !== "console",
+            ),
+          );
           break;
         case "player_joined":
-          setRemotePlayers((prev) => {
-            if (prev.find((p) => p.id === msg.id)) return prev;
-            return [...prev, msg];
-          });
+          if (msg.deviceType !== "console") {
+            setRemotePlayers((prev) => {
+              if (prev.find((p) => p.id === msg.id)) return prev;
+              return [...prev, msg];
+            });
+          }
           break;
         case "player_left":
           setRemotePlayers((prev) => prev.filter((p) => p.id !== msg.playerId));
@@ -69,6 +82,11 @@ export default function App() {
           break;
       }
     });
+
+    return () => {
+      unsub();
+      socket?.disconnect();
+    };
   }, [state]);
 
   // Start input manager and forward actions to backend

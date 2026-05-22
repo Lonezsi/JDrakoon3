@@ -1,5 +1,6 @@
 ﻿import qrcode from "qrcode";
 import express from "express";
+import type { Request, Response, NextFunction } from "express";
 import os from "os";
 import http from "http";
 import path from "path";
@@ -89,6 +90,16 @@ async function bootstrap() {
     res.json({ ok: true, info });
   });
 
+  // Debug: return current lobby players (subscribe returns current state synchronously)
+  app.get("/_debug/lobby", (req, res) => {
+    try {
+      const players = (lobbySync as any).getPlayers()
+      res.json({ players });
+    } catch (err) {
+      res.status(500).json({ ok: false });
+    }
+  });
+
   // Token‑based QR (deprecated)
   app.get("/pair/qr", async (req, res) => {
     const entry = authService.createPairToken({}, 2 * 60 * 1000, true);
@@ -109,22 +120,83 @@ async function bootstrap() {
   if (isDev) {
     logger.info("Development mode: proxying to Vite dev servers");
 
-    // Phone UI → Vite (default port 5174), strip /phone prefix
+    // Detect which Vite server is serving the phone UI (ports may swap
+    // if one port is already in use). Probe both common ports and pick the
+    // one that responds to /phone/ with 200.
+    let phoneTarget = "http://localhost:5174";
+    let tvTarget = "http://localhost:5173";
+    const probePhone = async (port: number) => {
+      return new Promise<boolean>((resolve) => {
+        const req = http.request(
+          {
+            hostname: "localhost",
+            port,
+            path: "/phone/",
+            method: "GET",
+            timeout: 1000,
+          },
+          (res) => {
+            const ok = res.statusCode === 200;
+            res.resume();
+            resolve(ok);
+          },
+        );
+        req.on("error", () => resolve(false));
+        req.on("timeout", () => {
+          req.destroy();
+          resolve(false);
+        });
+        req.end();
+      });
+    };
+    try {
+      const p5174 = await probePhone(5174);
+      const p5173 = await probePhone(5173);
+      if (p5174 && !p5173) {
+        phoneTarget = "http://localhost:5174";
+        tvTarget = "http://localhost:5173";
+      } else if (p5173 && !p5174) {
+        phoneTarget = "http://localhost:5173";
+        tvTarget = "http://localhost:5174";
+      }
+      logger.info(`Detected phone dev server: ${phoneTarget}`);
+    } catch (e) {
+      logger.warn("Failed to probe Vite dev servers, using defaults");
+    }
+
+    // Safe redirect from /phone → /phone/ BEFORE the proxy (avoids Vite's own redirect)
+    // Only redirect for the exact `/phone` path — don't redirect if the path
+    // is already `/phone/` (Express may call this handler for both variants).
+    app.get("/phone", (req: Request, res: Response, next: NextFunction) => {
+      const orig = (req.originalUrl || req.url || "") as string;
+      if (!orig.endsWith("/")) return res.redirect(301, "/phone/");
+      return next();
+    });
+
+    // Phone UI → Vite (port 5174) — NO pathRewrite, Vite expects /phone/ paths
     app.use(
       "/phone",
       createProxyMiddleware({
-        target: "http://localhost:5174",
-        changeOrigin: true,
+        target: phoneTarget,
+        changeOrigin: true, // needed for HMR
         ws: true,
-        pathRewrite: { "^/phone": "" },
+        // Preserve the original request URL (including /phone prefix)
+        // because when mounted with app.use('/phone', ...) Express strips
+        // the mount path from req.url — Vite expects to see /phone/* paths
+        // because it's configured with base '/phone/'. Using a function
+        // lets us forward the true original path.
+        pathRewrite: (pathReq, req) => {
+          const anyReq = req as any;
+          return (anyReq && anyReq.originalUrl) || pathReq;
+        },
       }),
     );
 
-    // TV UI → Vite (default port 5173)
+    // TV UI → Vite (port 5173)
     app.use(
       "/",
       createProxyMiddleware({
-        target: "http://localhost:5173",
+        target: tvTarget,
         changeOrigin: true,
         ws: true,
       }),

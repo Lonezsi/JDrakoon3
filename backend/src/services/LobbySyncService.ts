@@ -107,6 +107,11 @@ class LobbySyncService {
     fn(Array.from(this.players.values()));
     return () => { this.subscribers = this.subscribers.filter(f => f !== fn); };
   }
+
+  // Return a snapshot of the current players
+  getPlayers() {
+    return Array.from(this.players.values());
+  }
 }
 
 export const lobbySync = new LobbySyncService();

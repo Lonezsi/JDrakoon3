@@ -15,6 +15,7 @@ export function connect(
     name?: string;
     color?: string;
     token?: string;
+    deviceType?: string;
   } = {},
 ) {
   const backendPort = 3001;

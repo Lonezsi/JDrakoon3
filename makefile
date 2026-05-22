@@ -43,9 +43,15 @@ run:
 	@echo Starting backend in a new window...
 	cmd /c start "JDrakoon Backend" cmd /c "cd /d $(BACKEND_DIR) && npm start"
 
-dev:
-	cd $(BACKEND_DIR) && call npm run dev
+PID_FILE=.backend.pid
 
+dev:
+	@echo Killing previous backend if exists...
+	@powershell -Command "if (Test-Path '$(PID_FILE)') { $$p = Get-Content '$(PID_FILE)'; Stop-Process -Id $$p -Force -ErrorAction SilentlyContinue; Remove-Item '$(PID_FILE)' -ErrorAction SilentlyContinue }"
+
+	@echo Starting backend...
+	@powershell -Command "$$proc = Start-Process cmd -ArgumentList '/k cd /d $(BACKEND_DIR) && npm run dev' -PassThru; $$proc.Id | Out-File -Encoding ascii '$(PID_FILE)'"
+	
 console:
 	@echo Starting couch-console in a new window...
 	cmd /c start "Couch Console" cmd /c "cd /d $(CONSOLE_DIR) && npm run dev"
