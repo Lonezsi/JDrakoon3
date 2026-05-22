@@ -82,17 +82,29 @@ export function initSocketIO(server: HttpServer) {
     socket.on("join", (payload: any, cb?: Function) => {
       if (!rateLimiter(socket))
         return cb?.({ ok: false, error: "rate_limited" });
+
+      // Normalise colour – accept string or { hex: string }
+      let color = "#6366f1";
+      if (payload?.color) {
+        if (typeof payload.color === "string") {
+          color = payload.color;
+        } else if (payload.color.hex && typeof payload.color.hex === "string") {
+          color = payload.color.hex;
+        }
+      }
+
       const playerId = uuidv4();
       const player = {
         id: playerId,
         name: payload?.name || "Guest",
-        color: payload?.color || "#6366f1",
+        color, // <-- normalised string
         deviceType: payload?.deviceType || "phone",
         isActive: true,
         lastSeen: Date.now(),
         pos: { x: 0, z: 0 },
         vel: { x: 0, z: 0 },
       };
+
       lobbySync.addPlayer(player as any);
       socket.data.playerId = playerId;
       socket.join("lobby");

@@ -45,7 +45,6 @@ export default function App() {
   // Connect to backend and handle lobby events
   useEffect(() => {
     if (state === "BOOT") return;
-    const socket = connect({ name: "TV Console", color: "#10b981" });
 
     const unsub = subscribe((msg) => {
       switch (msg.type) {
@@ -70,11 +69,6 @@ export default function App() {
           break;
       }
     });
-
-    return () => {
-      unsub();
-      socket?.disconnect();
-    };
   }, [state]);
 
   // Start input manager and forward actions to backend
