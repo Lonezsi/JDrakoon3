@@ -62,7 +62,7 @@ export function Footer({ players }: FooterProps) {
       </div>
 
       {/* Media Player expanded */}
-      <div className="flex-1 bg-white/5 rounded-3xl border border-white/10 p-4 flex flex-col gap-2 min-w-0">
+      <div className="bg-white/5 rounded-3xl border border-white/10 p-2 gap-2 min-w-0 w-[400px] h-full flex flex-col">
         {/* Top row: current track info + transport */}
         <div className="flex items-center gap-4">
           <div className="p-2.5 bg-indigo-500/20 rounded-xl text-indigo-400 flex-shrink-0">
@@ -97,7 +97,7 @@ export function Footer({ players }: FooterProps) {
               )}
             </div>
           </div>
-          <div className="flex items-center gap-1.5">
+          <div className="items-center gap-1.5">
             <button
               onClick={media.handlePrev}
               className="p-2 rounded-lg text-slate-400 hover:text-white hover:bg-white/10 disabled:opacity-20"
@@ -191,11 +191,12 @@ export function Footer({ players }: FooterProps) {
       </div>
 
       {/* Queue inside main area (horizontal) */}
-      <div className="mt-3">
-        <h3 className="text-[10px] font-black text-gray-600 uppercase tracking-widest mb-1">
+      <div className="flex flex-col flex-1 min-w-0 items-start">
+        <h3 className="shrink-0 text-[10px] font-black text-gray-600 uppercase tracking-widest mb-1 flex gap-1">
           Queue
         </h3>
-        <div className="flex gap-2 overflow-x-auto py-1 custom-scroll">
+
+        <div className="w-full flex gap-2 overflow-x-auto py-1 custom-scroll">
           {media.queue.length === 0 && (
             <p className="text-[10px] text-gray-700 italic text-center py-2">
               Empty

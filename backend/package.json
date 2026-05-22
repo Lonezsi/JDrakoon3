@@ -6,7 +6,10 @@
   "scripts": {
     "build": "tsc",
     "start": "node dist/index.js",
-    "dev": "ts-node src/index.ts",
+    "dev": "concurrently \"npm run dev:backend\" \"npm run dev:console\" \"npm run dev:remote\"",
+    "dev:backend": "set NODE_ENV=development && ts-node src/index.ts",
+    "dev:console": "cd ../couch-console && npm run dev",
+    "dev:remote": "cd ../couch-remote && npm run dev",
     "watch": "ts-node-dev --respawn src/index.ts"
   },
   "dependencies": {
@@ -30,6 +33,9 @@
     "@types/qrcode": "^1.5.5",
     "@types/uuid": "^9.0.7",
     "@types/ws": "^8.5.8",
+    "concurrently": "^9.2.1",
+    "depcheck": "^1.4.7",
+    "http-proxy-middleware": "^4.0.0",
     "ts-node": "^10.9.1",
     "ts-node-dev": "^2.0.0",
     "typescript": "^5.2.2"

@@ -44,8 +44,7 @@ run:
 	cmd /c start "JDrakoon Backend" cmd /c "cd /d $(BACKEND_DIR) && npm start"
 
 dev:
-	@echo Starting backend (development) in a new window...
-	cmd /c start "JDrakoon Backend (dev)" cmd /c "cd /d $(BACKEND_DIR) && npm run dev"
+	cd $(BACKEND_DIR) && call npm run dev
 
 console:
 	@echo Starting couch-console in a new window...
@@ -61,3 +60,8 @@ kill:
 		for /f "tokens=5" %%a in ('netstat -ano ^| findstr :%%p ^| findstr LISTENING') do taskkill /F /PID %%a \
 	)
 	@echo Done.
+
+unused:
+	cd $(BACKEND_DIR) && npx depcheck
+	cd $(CONSOLE_DIR) && npx depcheck
+	cd $(REMOTE_DIR) && npx depcheck

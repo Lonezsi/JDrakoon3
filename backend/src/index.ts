@@ -1,5 +1,6 @@
 ﻿import qrcode from "qrcode";
 import express from "express";
+import os from "os";
 import http from "http";
 import path from "path";
 import { initWebSocketServer } from "./websocket/server";
@@ -15,6 +16,7 @@ import fs from "fs";
 import { inputService } from "./services/InputService";
 import { broadcast } from "./websocket/broadcast";
 import { authService } from "./services/AuthService";
+import { createProxyMiddleware } from "http-proxy-middleware";
 
 async function bootstrap() {
   if (!fs.existsSync(CACHE_DIR)) fs.mkdirSync(CACHE_DIR, { recursive: true });
@@ -29,25 +31,36 @@ async function bootstrap() {
   const frontendPath = path.join(process.cwd(), "frontend-build");
   const phonePath = path.join(frontendPath, "phone");
 
-  // Serve phone static files under /phone
-  if (fs.existsSync(phonePath)) {
-    app.use("/phone", express.static(phonePath));
-    logger.info(`Serving phone frontend from ${phonePath}`);
-  } else {
-    logger.warn(`Phone frontend not found at ${phonePath}`);
-  }
+  const isDev = process.env.NODE_ENV !== "production";
 
-  // Serve TV UI static files at root
-  if (fs.existsSync(frontendPath)) {
-    app.use(express.static(frontendPath));
-    logger.info(`Serving TV UI from ${frontendPath}`);
-  } else {
-    logger.warn(
-      "Frontend build not found, please build couch-console and copy to ./frontend-build",
-    );
-  }
+  // ── API routes (must come before proxies / static) ──────────
 
-  // Video stream endpoint
+  // Dynamic QR code for phone pairing
+  app.get("/qr-code", async (req, res) => {
+    try {
+      let ip = req.hostname;
+      const nets = os.networkInterfaces();
+      for (const name of Object.keys(nets)) {
+        for (const net of nets[name]!) {
+          if (net.family === "IPv4" && !net.internal) {
+            ip = net.address;
+            break;
+          }
+        }
+        if (ip !== req.hostname) break;
+      }
+      const phoneUrl = `http://${ip}:${PORT}/phone`;
+      const svg = await qrcode.toString(phoneUrl, {
+        type: "svg",
+        errorCorrectionLevel: "M",
+      });
+      res.json({ svg, url: phoneUrl });
+    } catch (err) {
+      res.status(500).json({ ok: false });
+    }
+  });
+
+  // Video streaming
   app.get("/stream", async (req, res) => {
     const { url } = req.query;
     if (!url || typeof url !== "string") {
@@ -58,34 +71,7 @@ async function bootstrap() {
     streamVideo(url, res);
   });
 
-  // SPA fallback for phone app (deep links)
-  app.get("/phone/*", (req, res) => {
-    const phoneIndex = path.join(phonePath, "index.html");
-    if (fs.existsSync(phoneIndex)) {
-      res.sendFile(phoneIndex);
-    } else {
-      res.status(404).send("Phone app not found");
-    }
-  });
-
-  // SPA fallback for TV UI (all other routes)
-  app.get("*", (req, res) => {
-    // Skip API and stream paths
-    if (req.path.startsWith("/stream") || req.path.startsWith("/ws")) {
-      return res.status(404).send("Not found");
-    }
-    const tvIndex = path.join(frontendPath, "index.html");
-    if (fs.existsSync(tvIndex)) {
-      res.sendFile(tvIndex);
-    } else {
-      res.status(404).send("TV UI not found");
-    }
-  });
-
-  const wss = initWebSocketServer(server);
-  setWss(wss);
-
-  // Pairing endpoints: create and inspect short-lived pairing tokens
+  // Pairing endpoints
   app.post("/pair", express.json(), (req, res) => {
     const { meta, ttl, oneTime } = req.body || {};
     const entry = authService.createPairToken(
@@ -103,7 +89,7 @@ async function bootstrap() {
     res.json({ ok: true, info });
   });
 
-  // QR pairing: returns an SVG QR code containing the token (useful for displaying on TV)
+  // Token‑based QR (deprecated)
   app.get("/pair/qr", async (req, res) => {
     const entry = authService.createPairToken({}, 2 * 60 * 1000, true);
     const payload = JSON.stringify({ token: entry.token });
@@ -117,6 +103,76 @@ async function bootstrap() {
       res.status(500).json({ ok: false });
     }
   });
+
+  // ── Frontend serving ───────────────────────────────────────
+
+  if (isDev) {
+    logger.info("Development mode: proxying to Vite dev servers");
+
+    // Phone UI → Vite (default port 5174), strip /phone prefix
+    app.use(
+      "/phone",
+      createProxyMiddleware({
+        target: "http://localhost:5174",
+        changeOrigin: true,
+        ws: true,
+        pathRewrite: { "^/phone": "" },
+      }),
+    );
+
+    // TV UI → Vite (default port 5173)
+    app.use(
+      "/",
+      createProxyMiddleware({
+        target: "http://localhost:5173",
+        changeOrigin: true,
+        ws: true,
+      }),
+    );
+  } else {
+    // Production: serve static builds
+    if (fs.existsSync(phonePath)) {
+      app.use("/phone", express.static(phonePath));
+      logger.info(`Serving phone frontend from ${phonePath}`);
+    } else {
+      logger.warn(`Phone frontend not found at ${phonePath}`);
+    }
+
+    if (fs.existsSync(frontendPath)) {
+      app.use(express.static(frontendPath));
+      logger.info(`Serving TV UI from ${frontendPath}`);
+    } else {
+      logger.warn(
+        "Frontend build not found, please build couch-console and copy to ./frontend-build",
+      );
+    }
+
+    // SPA fallback for phone deep links
+    app.get("/phone/*", (req, res) => {
+      const phoneIndex = path.join(phonePath, "index.html");
+      if (fs.existsSync(phoneIndex)) {
+        res.sendFile(phoneIndex);
+      } else {
+        res.status(404).send("Phone app not found");
+      }
+    });
+
+    // SPA fallback for TV UI
+    app.get("*", (req, res) => {
+      if (req.path.startsWith("/stream") || req.path.startsWith("/ws")) {
+        return res.status(404).send("Not found");
+      }
+      const tvIndex = path.join(frontendPath, "index.html");
+      if (fs.existsSync(tvIndex)) {
+        res.sendFile(tvIndex);
+      } else {
+        res.status(404).send("TV UI not found");
+      }
+    });
+  }
+
+  const wss = initWebSocketServer(server);
+  setWss(wss);
 
   // Initialize Socket.IO alongside existing WebSocket server
   try {
