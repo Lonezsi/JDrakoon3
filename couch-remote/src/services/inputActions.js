@@ -36,42 +36,13 @@ export const Actions = {
   LOOP_TOGGLE: "LOOP_TOGGLE",
   PLAYBACK_SPEED: "PLAYBACK_SPEED",
   SUBTITLES_TOGGLE: "SUBTITLES_TOGGLE",
-  EMOTE: "EMOTE",
   CUBE_MOVE: "CUBE_MOVE",
-  JUMP: "JUMP",
+  A: "A",
+  B: "B",
+  X: "X",
+  Y: "Y",
 };
 
 export function sendAction(type, payload = {}) {
   sendFn({ type, payload });
-}
-
-export function navUp() {
-  sendAction(Actions.NAV_UP);
-}
-export function navDown() {
-  sendAction(Actions.NAV_DOWN);
-}
-export function navLeft() {
-  sendAction(Actions.NAV_LEFT);
-}
-export function navRight() {
-  sendAction(Actions.NAV_RIGHT);
-}
-export function confirm() {
-  sendAction(Actions.CONFIRM);
-}
-export function back() {
-  sendAction(Actions.BACK);
-}
-export function home() {
-  sendAction(Actions.HOME);
-}
-export function start() {
-  sendAction(Actions.START);
-}
-export function menu() {
-  sendAction(Actions.MENU);
-}
-export function power() {
-  sendAction(Actions.POWER);
 }

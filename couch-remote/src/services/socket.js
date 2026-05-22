@@ -49,79 +49,63 @@ export function connect(url, opts = {}) {
 
   // set transport for inputActions
   setTransport((action) => {
-    if (!socket || !socket.connected)
-      return console.warn("socket not connected");
-
+    if (!socket || !socket.connected) return;
     const { type, payload } = action;
 
     switch (type) {
-      // ── Cube movement (joystick) ──────────────────────────
+      // ── Cube movement (joystick) ──
       case "CUBE_MOVE":
         socket.emit("input:event", {
-          analog: {
-            x: payload?.x ?? 0,
-            y: payload?.y ?? 0,
-          },
-          buttons: {},
-        });
-        console.log("📱 Sending CUBE_MOVE:", payload);
-        break;
-
-      // ── Jump ──────────────────────────────────────────────
-      case "JUMP":
-        socket.emit("input:event", {
-          analog: { x: 0, y: 0 },
-          buttons: { jump: true },
-        });
-        console.log("📱 Sending JUMP");
-        break;
-
-      // ── Emote ─────────────────────────────────────────────
-      case "EMOTE":
-        socket.emit("action", {
-          type: "emote",
-          value: payload?.emote ?? "wave",
-        });
-        console.log("📱 Sending EMOTE:", payload?.emote);
-        break;
-
-      // ── Mouse / touchpad ─────────────────────────────────
-      case "MOUSE_MOVE":
-        socket.emit("input:event", {
-          analog: { x: payload.dx || 0, y: payload.dy || 0 },
+          analog: { x: payload?.x ?? 0, y: payload?.y ?? 0 },
           buttons: {},
         });
         break;
-      case "MOUSE_CLICK":
-        socket.emit("input:event", { buttons: { a: true } });
+
+      // ── A / B / X / Y ──
+      case "A":
+        socket.emit("input:event", { analog: {}, buttons: { a: true } });
         break;
-      case "MOUSE_RIGHT_CLICK":
-        socket.emit("input:event", { buttons: { b: true } });
+      case "B":
+        socket.emit("input:event", { analog: {}, buttons: { b: true } });
+        break;
+      case "X":
+        socket.emit("input:event", { analog: {}, buttons: { x: true } });
+        break;
+      case "Y":
+        socket.emit("input:event", { analog: {}, buttons: { y: true } });
         break;
 
-      // ── Navigation (D‑pad) ────────────────────────────────
+      // ── D‑pad → directional buttons ──
       case "NAV_UP":
-      case "NAV_DOWN":
-      case "NAV_LEFT":
-      case "NAV_RIGHT":
-        socket.emit("action", {
-          type: "navigate",
-          value: { direction: type.split("_")[1].toLowerCase() },
-        });
+        socket.emit("input:event", { analog: {}, buttons: { up: true } });
         break;
-      case "CONFIRM":
-        socket.emit("action", { type: "confirm" });
+      case "NAV_DOWN":
+        socket.emit("input:event", { analog: {}, buttons: { down: true } });
+        break;
+      case "NAV_LEFT":
+        socket.emit("input:event", { analog: {}, buttons: { left: true } });
+        break;
+      case "NAV_RIGHT":
+        socket.emit("input:event", { analog: {}, buttons: { right: true } });
         break;
 
-      // ── Scrolling / keyboard / text ───────────────────────
-      case "SCROLL":
-        socket.emit("action", { type: "scroll", value: { dy: payload.dy } });
+      // ── CONFIRM (A already covers it, but keep for safety) ──
+      case "CONFIRM":
+        socket.emit("input:event", { analog: {}, buttons: { a: true } });
         break;
-      case "KEY_PRESS":
-        socket.emit("action", { type: "key", value: { key: payload.key } });
+
+      // ── HOME (backend maps start → home in menu focus) ──
+      case "HOME":
+        socket.emit("input:event", { analog: {}, buttons: { start: true } });
         break;
-      case "TEXT_INPUT":
-        socket.emit("action", { type: "text", value: { text: payload.text } });
+      case "MENU":
+        socket.emit("action", { type: "menu" });
+        break;
+      case "POWER":
+        socket.emit("action", { type: "power" });
+        break;
+      case "START":
+        socket.emit("action", { type: "start" });
         break;
 
       // ── Media controls ────────────────────────────────────

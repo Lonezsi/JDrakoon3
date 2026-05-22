@@ -16,17 +16,6 @@ import {
 } from "lucide-react";
 
 import { sendAction, Actions } from "../../services/inputActions";
-const navUp = () => sendAction(Actions.NAV_UP);
-const navDown = () => sendAction(Actions.NAV_DOWN);
-const navLeft = () => sendAction(Actions.NAV_LEFT);
-const navRight = () => sendAction(Actions.NAV_RIGHT);
-const confirm = () => sendAction(Actions.CONFIRM);
-const back = () => sendAction(Actions.BACK);
-const home = () => sendAction(Actions.HOME);
-const start = () => sendAction(Actions.START);
-const menu = () => sendAction(Actions.MENU);
-const power = () => sendAction(Actions.POWER);
-// ───────────────────────────────────────────────────────────────────────
 
 // Physical-feel button with press animation (Tailwind + inline for dynamics)
 function PadBtn({
@@ -220,19 +209,19 @@ export default function RemoteTab() {
 
       {/* ── System bar ───────────────────────────────────────────── */}
       <div className="flex max-h-[30px] mb-1 justify-between items-center">
-        <PadBtn onPress={home}>
+        <PadBtn onPress={() => sendAction(Actions.HOME)}>
           <Home size={17} />
         </PadBtn>
-        <PadBtn onPress={back}>
+        <PadBtn onPress={() => sendAction(Actions.BACK)}>
           <ArrowLeft size={17} />
         </PadBtn>
-        <PadBtn onPress={start}>
+        <PadBtn onPress={() => sendAction(Actions.START)}>
           <Triangle size={17} />
         </PadBtn>
-        <PadBtn onPress={menu}>
+        <PadBtn onPress={() => sendAction(Actions.MENU)}>
           <Settings size={17} />
         </PadBtn>
-        <PadBtn onPress={power} accent="#f87171">
+        <PadBtn onPress={() => sendAction(Actions.POWER)} accent="#f87171">
           <Power size={17} />
         </PadBtn>
       </div>
@@ -243,12 +232,12 @@ export default function RemoteTab() {
         <div className="grid grid-cols-3 gap-1.5 items-center justify-items-center">
           {/* row 1 */}
           <div />
-          <PadBtn onPress={navUp}>
+          <PadBtn onPress={() => sendAction(Actions.NAV_UP)}>
             <ArrowUp size={18} />
           </PadBtn>
           <div />
           {/* row 2 */}
-          <PadBtn onPress={navLeft}>
+          <PadBtn onPress={() => sendAction(Actions.NAV_LEFT)}>
             <ArrowLeft size={18} />
           </PadBtn>
           <Joystick
@@ -257,12 +246,12 @@ export default function RemoteTab() {
             accent="#6366f1"
             onMove={(x, y) => sendAction(Actions.CUBE_MOVE, { x, y })}
           />
-          <PadBtn onPress={navRight}>
+          <PadBtn onPress={() => sendAction(Actions.NAV_RIGHT)}>
             <ArrowRight size={18} />
           </PadBtn>
           {/* row 3 */}
           <div />
-          <PadBtn onPress={navDown}>
+          <PadBtn onPress={() => sendAction(Actions.NAV_DOWN)}>
             <ArrowDown size={18} />
           </PadBtn>
           <div />
@@ -273,37 +262,24 @@ export default function RemoteTab() {
         {/* ABXY diamond */}
         <div className="grid grid-cols-3 gap-1.5 items-center justify-items-center">
           <div />
+
           <PadBtn
-            onPress={confirm}
+            onPress={() => sendAction(Actions.Y)}
             circle
-            accent="#22c55e"
+            accent="#eab308"
             extraStyle={{
               fontWeight: 800,
               fontSize: 13,
               letterSpacing: 0.5,
-              color: "#4ade80",
+              color: "#facc15",
             }}
           >
-            A
+            Y
           </PadBtn>
           <div />
 
           <PadBtn
-            onPress={back}
-            circle
-            accent="#ef4444"
-            extraStyle={{
-              fontWeight: 800,
-              fontSize: 13,
-              letterSpacing: 0.5,
-              color: "#f87171",
-            }}
-          >
-            B
-          </PadBtn>
-          <div className="w-12 h-12" />
-          <PadBtn
-            onPress={() => sendAction(Actions.JUMP)}
+            onPress={() => sendAction(Actions.X)}
             circle
             accent="#3b82f6"
             extraStyle={{
@@ -316,19 +292,35 @@ export default function RemoteTab() {
             X
           </PadBtn>
 
-          <div />
+          <div className="w-12 h-12" />
           <PadBtn
-            onPress={() => sendAction(Actions.EMOTE, { emote: "wave" })}
+            onPress={() => sendAction(Actions.B)}
             circle
-            accent="#eab308"
+            accent="#ef4444"
             extraStyle={{
               fontWeight: 800,
               fontSize: 13,
               letterSpacing: 0.5,
-              color: "#facc15",
+              color: "#f87171",
             }}
           >
-            Y
+            B
+          </PadBtn>
+
+          <div />
+
+          <PadBtn
+            onPress={() => sendAction(Actions.A)}
+            circle
+            accent="#22c55e"
+            extraStyle={{
+              fontWeight: 800,
+              fontSize: 13,
+              letterSpacing: 0.5,
+              color: "#4ade80",
+            }}
+          >
+            A
           </PadBtn>
           <div />
         </div>

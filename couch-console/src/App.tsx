@@ -2,12 +2,12 @@ import { useEffect, useState, useMemo } from "react";
 import { appState } from "./core/stateMachine";
 import { events } from "./core/events";
 import { launchApp } from "./services/launcherService";
-import { inputManager } from "./systems/input/inputManager";
 import { connect, subscribe, sendAction } from "./services/socket";
 import { useLobbyRenderer } from "./hooks/useLobbyRenderer";
 import { useGameLoop } from "./hooks/useGameLoop";
 import { useClock } from "./hooks/useClock";
 import { BootScreen } from "./ui/components/BootScreen";
+import { inputManager } from "./systems/input/inputManager";
 import { DashboardLayout } from "./ui/layouts/DashboardLayout";
 import { AppRunningOverlay } from "./ui/components/AppRunningOverlay";
 import { Notifications } from "./ui/components/Notifications";
@@ -46,13 +46,14 @@ export default function App() {
   useEffect(() => {
     if (state === "BOOT") return;
 
-    //spawn a cube for each player but not for console
+    // Connect as console observer (no cube)
     const socket = connect({
       name: "Console",
       color: "#000000",
       deviceType: "console",
     });
 
+    // ── Remote (phone) actions ────────────────────────────
     const unsub = subscribe((msg) => {
       switch (msg.type) {
         case "lobby_state":
@@ -73,51 +74,56 @@ export default function App() {
         case "player_left":
           setRemotePlayers((prev) => prev.filter((p) => p.id !== msg.playerId));
           break;
-        case "input:event":
-        case "action":
-          sendAction(msg); // forward to backend
-          console.log("Received action from backend:", msg);
+
+        // Phone remote navigation
+        case "navigate":
+          if (appState.current === "HOME" && msg.direction) {
+            if (msg.direction === "right") {
+              setActiveIndex((i) => Math.min(i + 1, MOCK_APPS.length - 1));
+            } else if (msg.direction === "left") {
+              setActiveIndex((i) => Math.max(i - 1, 0));
+            }
+          }
           break;
+        case "confirm":
+          if (appState.current === "HOME") {
+            launchApp(MOCK_APPS[activeIndex]);
+          }
+          break;
+        case "home":
+          appState.transition("HOME");
+          setActiveIndex(0);
+          break;
+
         default:
           break;
       }
     });
 
-    return () => {
-      unsub();
-      socket?.disconnect();
-    };
-  }, [state]);
-
-  // Start input manager and forward actions to backend
-  useEffect(() => {
-    if (state === "BOOT") return;
-    const stop = inputManager.start();
-
-    const unsubActions = inputManager.onActions((actions) => {
+    // ── Local keyboard / gamepad navigation ────────────────
+    const stopInput = inputManager.start();
+    const unsubInput = inputManager.onActions((actions) => {
+      // Only process navigation while on HOME screen
+      if (appState.current !== "HOME") return;
       actions.forEach((a) => {
-        // Movement: send as input:event with analog (backend handles physics)
-        if (a.type === "move") {
-          const value = a.value as { x: number; y: number };
-          sendAction({
-            type: "input:event",
-            payload: { analog: { x: value.x, y: value.y }, buttons: {} },
-          });
-          console.log("Move action sent:", value);
-        }
-        // Navigation / confirm – handled locally for now; will be sent in Step 3
-        else if (a.type === "navigate" || a.type === "confirm") {
-          sendAction({
-            type: "action",
-            payload: a,
-          });
+        if (a.type === "navigate") {
+          const val = a.value as { direction: string };
+          if (val.direction === "right") {
+            setActiveIndex((i) => Math.min(i + 1, MOCK_APPS.length - 1));
+          } else if (val.direction === "left") {
+            setActiveIndex((i) => Math.max(i - 1, 0));
+          }
+        } else if (a.type === "confirm") {
+          launchApp(MOCK_APPS[activeIndex]);
         }
       });
     });
 
     return () => {
-      unsubActions();
-      stop();
+      unsub();
+      socket?.disconnect();
+      unsubInput();
+      stopInput();
     };
   }, [state]);
 
@@ -128,27 +134,6 @@ export default function App() {
     );
     return unsub;
   }, []);
-
-  // Navigation (still uses MOCK_APPS for now)
-  useEffect(() => {
-    const unsub = inputManager.onActions((actions) => {
-      if (appState.current !== "HOME") return;
-      actions.forEach((a) => {
-        if (
-          a.type === "navigate" &&
-          typeof a.value === "object" &&
-          "direction" in a.value
-        ) {
-          if (a.value.direction === "right")
-            setActiveIndex((i) => Math.min(i + 1, MOCK_APPS.length - 1));
-          if (a.value.direction === "left")
-            setActiveIndex((i) => Math.max(i - 1, 0));
-        }
-        if (a.type === "confirm") launchApp(MOCK_APPS[activeIndex]);
-      });
-    });
-    return unsub;
-  }, [activeIndex]);
 
   if (state === "BOOT") return <BootScreen />;
 
