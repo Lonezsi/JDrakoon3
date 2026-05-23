@@ -18,6 +18,7 @@ import { inputService } from "./services/InputService";
 import { broadcast } from "./websocket/broadcast";
 import { authService } from "./services/AuthService";
 import { createProxyMiddleware } from "http-proxy-middleware";
+import { exec, execSync } from "child_process";
 
 async function bootstrap() {
   if (!fs.existsSync(CACHE_DIR)) fs.mkdirSync(CACHE_DIR, { recursive: true });
@@ -93,7 +94,7 @@ async function bootstrap() {
   // Debug: return current lobby players (subscribe returns current state synchronously)
   app.get("/_debug/lobby", (req, res) => {
     try {
-      const players = (lobbySync as any).getPlayers()
+      const players = (lobbySync as any).getPlayers();
       res.json({ players });
     } catch (err) {
       res.status(500).json({ ok: false });
@@ -113,6 +114,37 @@ async function bootstrap() {
     } catch (err) {
       res.status(500).json({ ok: false });
     }
+  });
+
+  function getWifiSSID(): string {
+    try {
+      logger.debug("Detecting WiFi SSID for platform:", process.platform);
+      if (process.platform === "win32") {
+        const output = execSync("netsh wlan show interfaces", {
+          encoding: "utf8",
+        });
+        const match = output.match(/^\s*SSID\s*:\s*(.+)\s*$/m);
+        return match ? match[1].trim() : "Unknown WiFi";
+      } else if (process.platform === "darwin") {
+        const output = execSync(
+          "/System/Library/PrivateFrameworks/Apple80211.framework/Versions/Current/Resources/airport -I",
+          { encoding: "utf8" },
+        );
+        const match = output.match(/^\s*SSID:\s*(.+)\s*$/m);
+        return match ? match[1].trim() : "Unknown WiFi";
+      } else {
+        // Linux
+        const output = execSync("iwgetid -r", { encoding: "utf8" }).trim();
+        return output || "Unknown WiFi";
+      }
+    } catch (err) {
+      return `Unknown WiFi | ${err}`;
+    }
+  }
+
+  app.get("/api/network-info", (req, res) => {
+    const ssid = getWifiSSID();
+    res.json({ ssid });
   });
 
   // ── Frontend serving ───────────────────────────────────────

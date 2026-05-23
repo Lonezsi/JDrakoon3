@@ -37,7 +37,7 @@ export function Footer({ players }: FooterProps) {
 
   return (
     <div className="flex items-end gap-6 py-4">
-      {/* In the Lobby (unchanged) */}
+      {/* In the Lobby */}
       <div className="flex flex-col gap-2.5 flex-shrink-0">
         <h3 className="text-[10px] font-black text-gray-600 uppercase tracking-widest">
           In the Lobby
@@ -62,133 +62,136 @@ export function Footer({ players }: FooterProps) {
       </div>
 
       {/* Media Player expanded */}
-      <div className="bg-white/5 rounded-3xl border border-white/10 p-2 gap-2 min-w-0 w-[400px] h-full flex flex-col">
-        {/* Top row: current track info + transport */}
-        <div className="flex items-center gap-4">
-          <div className="p-2.5 bg-indigo-500/20 rounded-xl text-indigo-400 flex-shrink-0">
-            <MonitorPlay size={18} />
-          </div>
-          <div className="flex-1 min-w-0">
-            <h3 className="text-[10px] font-black text-gray-600 uppercase tracking-widest mb-1">
-              {media.currentItem
-                ? media.isPlaying
-                  ? "Now Playing"
-                  : "Paused"
-                : "No Media"}
-            </h3>
-            <div className="flex items-center gap-2">
-              {media.currentItem && (
-                <>
-                  <img
-                    src={media.currentItem.thumb}
-                    className="w-8 h-8 rounded-lg object-cover flex-shrink-0"
-                    alt=""
-                  />
-                  <div className="min-w-0 leading-tight">
-                    <p className="text-xs font-black text-white truncate">
-                      {media.currentItem.title}
-                    </p>
-                    <p className="text-[10px] text-gray-500">
-                      {media.currentItem.channel} · added by{" "}
-                      {media.currentItem.addedBy}
-                    </p>
-                  </div>
-                </>
-              )}
+      {/* If no media, show "Add URL" input and queue only. If media exists, show full player with now-playing + seekbar + transport + volume */}
+      {media.currentItem != null && (
+        <div className="bg-white/5 rounded-3xl border border-white/10 p-2 gap-2 min-w-0 w-[400px] h-full flex flex-col">
+          {/* Top row: current track info + transport */}
+          <div className="flex items-center gap-4">
+            <div className="p-2.5 bg-indigo-500/20 rounded-xl text-indigo-400 flex-shrink-0">
+              <MonitorPlay size={18} />
+            </div>
+            <div className="flex-1 min-w-0">
+              <h3 className="text-[10px] font-black text-gray-600 uppercase tracking-widest mb-1">
+                {media.currentItem
+                  ? media.isPlaying
+                    ? "Now Playing"
+                    : "Paused"
+                  : "No Media"}
+              </h3>
+              <div className="flex items-center gap-2">
+                {media.currentItem && (
+                  <>
+                    <img
+                      src={media.currentItem.thumb}
+                      className="w-8 h-8 rounded-lg object-cover flex-shrink-0"
+                      alt=""
+                    />
+                    <div className="min-w-0 leading-tight">
+                      <p className="text-xs font-black text-white truncate">
+                        {media.currentItem.title}
+                      </p>
+                      <p className="text-[10px] text-gray-500">
+                        {media.currentItem.channel} · added by{" "}
+                        {media.currentItem.addedBy}
+                      </p>
+                    </div>
+                  </>
+                )}
+              </div>
+            </div>
+            <div className="items-center gap-1.5">
+              <button
+                onClick={media.handlePrev}
+                className="p-2 rounded-lg text-slate-400 hover:text-white hover:bg-white/10 disabled:opacity-20"
+              >
+                <SkipBack size={14} />
+              </button>
+              <button
+                onClick={media.handlePlayPause}
+                className="p-2 bg-indigo-600 rounded-full text-white shadow-lg shadow-indigo-500/30 hover:scale-105 active:scale-95"
+              >
+                {media.isPlaying ? (
+                  <Pause size={16} />
+                ) : (
+                  <Play size={16} className="ml-px" />
+                )}
+              </button>
+              <button
+                onClick={media.handleNext}
+                className="p-2 rounded-lg text-slate-400 hover:text-white hover:bg-white/10 disabled:opacity-20"
+              >
+                <SkipForward size={14} />
+              </button>
             </div>
           </div>
-          <div className="items-center gap-1.5">
+
+          {/* Seekbar + time */}
+          <div className="flex items-center gap-2">
+            <span className="text-[10px] text-gray-500 font-mono w-10 text-right">
+              {media.currentItem?.duration === "LIVE"
+                ? "LIVE"
+                : `${Math.floor(media.progress * 0.45)}:${String(Math.floor(((media.progress * 0.45) % 1) * 60)).padStart(2, "0")}`}
+            </span>
+            <input
+              type="range"
+              min={0}
+              max={100}
+              value={media.progress}
+              onChange={(e) => media.handleSeek(+e.target.value)}
+              className="flex-1 h-1.5 appearance-none rounded-full"
+              style={{
+                accentColor: "#6366f1",
+                background: `linear-gradient(90deg,#6366f1, #a78bfa)`,
+              }}
+            />
+            <span className="text-[10px] text-gray-500 font-mono w-10">
+              {media.currentItem?.duration === "LIVE"
+                ? "∞"
+                : media.currentItem?.duration || "--:--"}
+            </span>
+          </div>
+
+          {/* Volume + fullscreen + clear */}
+          <div className="flex items-center gap-3">
             <button
-              onClick={media.handlePrev}
-              className="p-2 rounded-lg text-slate-400 hover:text-white hover:bg-white/10 disabled:opacity-20"
+              onClick={media.toggleMute}
+              className="text-slate-500 hover:text-white"
             >
-              <SkipBack size={14} />
+              {media.muted ? <VolumeX size={14} /> : <Volume2 size={14} />}
             </button>
+            <input
+              type="range"
+              min={0}
+              max={100}
+              value={media.muted ? 0 : media.volume}
+              onChange={(e) => media.handleVolumeChange(+e.target.value)}
+              className="w-20 h-1 appearance-none rounded-full"
+              style={{ accentColor: "#6366f1" }}
+            />
+            <span className="text-[10px] font-black text-slate-500 w-5">
+              {media.muted ? 0 : media.volume}
+            </span>
             <button
-              onClick={media.handlePlayPause}
-              className="p-2 bg-indigo-600 rounded-full text-white shadow-lg shadow-indigo-500/30 hover:scale-105 active:scale-95"
+              onClick={media.toggleFullscreen}
+              className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-white/10"
             >
-              {media.isPlaying ? (
-                <Pause size={16} />
+              {media.isFullscreen ? (
+                <Minimize size={14} />
               ) : (
-                <Play size={16} className="ml-px" />
+                <Maximize size={14} />
               )}
             </button>
-            <button
-              onClick={media.handleNext}
-              className="p-2 rounded-lg text-slate-400 hover:text-white hover:bg-white/10 disabled:opacity-20"
-            >
-              <SkipForward size={14} />
-            </button>
+            {media.queue.length > 0 && (
+              <button
+                onClick={media.clearQueue}
+                className="ml-auto text-[10px] text-red-400 font-black uppercase tracking-wider hover:text-red-300"
+              >
+                Clear
+              </button>
+            )}
           </div>
         </div>
-
-        {/* Seekbar + time */}
-        <div className="flex items-center gap-2">
-          <span className="text-[10px] text-gray-500 font-mono w-10 text-right">
-            {media.currentItem?.duration === "LIVE"
-              ? "LIVE"
-              : `${Math.floor(media.progress * 0.45)}:${String(Math.floor(((media.progress * 0.45) % 1) * 60)).padStart(2, "0")}`}
-          </span>
-          <input
-            type="range"
-            min={0}
-            max={100}
-            value={media.progress}
-            onChange={(e) => media.handleSeek(+e.target.value)}
-            className="flex-1 h-1.5 appearance-none rounded-full"
-            style={{
-              accentColor: "#6366f1",
-              background: `linear-gradient(90deg,#6366f1, #a78bfa)`,
-            }}
-          />
-          <span className="text-[10px] text-gray-500 font-mono w-10">
-            {media.currentItem?.duration === "LIVE"
-              ? "∞"
-              : media.currentItem?.duration || "--:--"}
-          </span>
-        </div>
-
-        {/* Volume + fullscreen + clear */}
-        <div className="flex items-center gap-3">
-          <button
-            onClick={media.toggleMute}
-            className="text-slate-500 hover:text-white"
-          >
-            {media.muted ? <VolumeX size={14} /> : <Volume2 size={14} />}
-          </button>
-          <input
-            type="range"
-            min={0}
-            max={100}
-            value={media.muted ? 0 : media.volume}
-            onChange={(e) => media.handleVolumeChange(+e.target.value)}
-            className="w-20 h-1 appearance-none rounded-full"
-            style={{ accentColor: "#6366f1" }}
-          />
-          <span className="text-[10px] font-black text-slate-500 w-5">
-            {media.muted ? 0 : media.volume}
-          </span>
-          <button
-            onClick={media.toggleFullscreen}
-            className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-white/10"
-          >
-            {media.isFullscreen ? (
-              <Minimize size={14} />
-            ) : (
-              <Maximize size={14} />
-            )}
-          </button>
-          {media.queue.length > 0 && (
-            <button
-              onClick={media.clearQueue}
-              className="ml-auto text-[10px] text-red-400 font-black uppercase tracking-wider hover:text-red-300"
-            >
-              Clear
-            </button>
-          )}
-        </div>
-      </div>
+      )}
 
       {/* Queue inside main area (horizontal) */}
       <div className="flex flex-col flex-1 min-w-0 items-start">

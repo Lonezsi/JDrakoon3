@@ -1,5 +1,6 @@
-import { Gamepad2, Smartphone } from "lucide-react";
+import { User } from "lucide-react";
 import type { Player } from "../../shared/types";
+import { useEffect, useState } from "react";
 
 interface TopBarProps {
   clock: Date;
@@ -11,6 +12,24 @@ export function TopBar({ clock, players }: TopBarProps) {
     hour: "2-digit",
     minute: "2-digit",
   });
+
+  const [wifiName, setWifiName] = useState("Loading...");
+  const [userName, setUserName] = useState("Loading...");
+
+  useEffect(() => {
+    fetch("/api/network-info")
+      .then((res) => res.json())
+      .then((data) => setWifiName(data.ssid))
+      .catch(() => setWifiName("Unknown WiFi"));
+  }, []);
+
+  useEffect(() => {
+    fetch("/api/users/me")
+      .then((res) => res.json())
+      .then((data) => setUserName(data.name))
+      .catch(() => setUserName("Not Signed In"));
+  }, []);
+
   return (
     <div className="flex justify-between items-start mb-2">
       <div className="flex items-center gap-4">
@@ -25,7 +44,7 @@ export function TopBar({ clock, players }: TopBarProps) {
             <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse flex-shrink-0" />
             <p className="text-[10px] text-indigo-400 font-bold uppercase tracking-widest">
               {players.length} Active ·&nbsp;
-              <span className="text-gray-500">WIFI: LIVING_ROOM_5G</span>
+              <span className="text-gray-500">WIFI: {wifiName}</span>
             </p>
           </div>
         </div>
@@ -37,11 +56,11 @@ export function TopBar({ clock, players }: TopBarProps) {
             {timeStr}
           </span>
           <span className="text-[10px] text-gray-600 font-bold uppercase tracking-widest mt-1 block">
-            CRT Active · Physics On
+            [{userName}]
           </span>
         </div>
         <div className="p-3 bg-white/5 rounded-2xl border border-white/10 text-indigo-400">
-          <Smartphone size={20} />
+          <User size={20} />
         </div>
       </div>
     </div>

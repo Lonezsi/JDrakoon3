@@ -51,7 +51,7 @@ dev:
 
 	@echo Starting backend...
 	@powershell -Command "$$proc = Start-Process cmd -ArgumentList '/k cd /d $(BACKEND_DIR) && npm run dev' -PassThru; $$proc.Id | Out-File -Encoding ascii '$(PID_FILE)'"
-	
+		
 console:
 	@echo Starting couch-console in a new window...
 	cmd /c start "Couch Console" cmd /c "cd /d $(CONSOLE_DIR) && npm run dev"
