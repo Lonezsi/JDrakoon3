@@ -35,6 +35,9 @@ async function bootstrap() {
 
   const isDev = process.env.NODE_ENV !== "production";
 
+  // Serve cached thumbnails and video files under /cache
+  app.use("/cache", express.static(CACHE_DIR));
+
   // ── API routes (must come before proxies / static) ──────────
 
   // Dynamic QR code for phone pairing
@@ -205,22 +208,14 @@ async function bootstrap() {
       return next();
     });
 
-    // Phone UI → Vite (port 5174) — NO pathRewrite, Vite expects /phone/ paths
+    // Phone UI → Vite (port 5174) — Rewrite path to include /phone prefix
     app.use(
       "/phone",
       createProxyMiddleware({
         target: phoneTarget,
-        changeOrigin: true, // needed for HMR
+        changeOrigin: true,
         ws: true,
-        // Preserve the original request URL (including /phone prefix)
-        // because when mounted with app.use('/phone', ...) Express strips
-        // the mount path from req.url — Vite expects to see /phone/* paths
-        // because it's configured with base '/phone/'. Using a function
-        // lets us forward the true original path.
-        pathRewrite: (pathReq, req) => {
-          const anyReq = req as any;
-          return (anyReq && anyReq.originalUrl) || pathReq;
-        },
+        pathRewrite: (path, req) => "/phone" + path,
       }),
     );
 

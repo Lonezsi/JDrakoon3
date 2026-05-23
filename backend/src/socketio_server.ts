@@ -47,11 +47,9 @@ function validateUrl(u: any) {
 
 function verifyToken(token?: string) {
   if (!token) {
-    // Allow missing token in non-production/dev environment for local testing
     if (process.env.NODE_ENV !== "production") return true;
     return false;
   }
-  // consumeToken will validate and remove one-time tokens atomically
   if (authService.consumeToken(token)) return true;
   if (process.env.SOCKET_SECRET) return token === process.env.SOCKET_SECRET;
   return false;
@@ -63,12 +61,11 @@ export function initSocketIO(server: HttpServer) {
     transports: ["polling", "websocket"],
     perMessageDeflate: false,
   });
-  const rateLimiter = makeRateLimiter(30, 60); // 30 tokens/sec, burst 60
+  const rateLimiter = makeRateLimiter(30, 60);
 
   io.on("connection", (socket) => {
     logger.info("Socket.IO connection", socket.id);
 
-    // Auth via handshake auth.token (optional)
     const token =
       (socket.handshake.auth && (socket.handshake.auth as any).token) ||
       undefined;
@@ -83,7 +80,6 @@ export function initSocketIO(server: HttpServer) {
       if (!rateLimiter(socket))
         return cb?.({ ok: false, error: "rate_limited" });
 
-      // Normalise colour – accept string or { hex: string }
       let color = "#6366f1";
       if (payload?.color) {
         if (typeof payload.color === "string") {
@@ -97,7 +93,7 @@ export function initSocketIO(server: HttpServer) {
       const player = {
         id: playerId,
         name: payload?.name || "Guest",
-        color, // <-- normalised string
+        color,
         deviceType: payload?.deviceType || "phone",
         isActive: true,
         lastSeen: Date.now(),
@@ -134,14 +130,42 @@ export function initSocketIO(server: HttpServer) {
       cb?.({ ok: true });
     });
 
-    socket.on("queue_add", async (url: string, cb?: Function) => {
+    // --- QUEUE & MEDIA (new, but backward‑compatible) ---
+
+    // Helper: extract URL from either a plain string or an object payload
+    function extractUrl(payload: any): string | undefined {
+      if (!payload) return undefined;
+      if (typeof payload === "string") return payload;
+      if (typeof payload === "object") {
+        if (typeof payload.url === "string") return payload.url;
+        // fallback: find any string that looks like an http(s) URL
+        for (const k of Object.keys(payload)) {
+          const v = payload[k];
+          if (
+            typeof v === "string" &&
+            (v.startsWith("http://") || v.startsWith("https://"))
+          )
+            return v;
+        }
+      }
+      return undefined;
+    }
+
+    socket.on("queue_add", async (payload: any, cb?: Function) => {
       if (!rateLimiter(socket))
         return cb?.({ ok: false, error: "rate_limited" });
-      if (!validateUrl(url)) return cb?.({ ok: false, error: "invalid_url" });
-      const item = await videoQueue.addToQueue(
-        url,
-        socket.data.playerId || "Phone",
-      );
+
+      const url = extractUrl(payload);
+      if (!url || !validateUrl(url))
+        return cb?.({ ok: false, error: "invalid_url" });
+
+      // requestedBy: if payload is an object with that field, use it; else fallback to playerId or "Phone"
+      const requestedBy =
+        (typeof payload === "object" && payload.requestedBy) ||
+        socket.data.playerId ||
+        "Phone";
+
+      const item = await videoQueue.addToQueue(url, requestedBy);
       if (item) {
         const state = videoQueue.getState();
         const seq = syncService.recordSnapshot("queue_updated", state);
@@ -150,9 +174,12 @@ export function initSocketIO(server: HttpServer) {
       cb?.({ ok: !!item });
     });
 
-    socket.on("queue_remove", (index: number, cb?: Function) => {
+    socket.on("queue_remove", (payload: any, cb?: Function) => {
       if (!rateLimiter(socket))
         return cb?.({ ok: false, error: "rate_limited" });
+      const index = typeof payload === "number" ? payload : payload?.index;
+      if (typeof index !== "number")
+        return cb?.({ ok: false, error: "invalid_payload" });
       videoQueue.removeFromQueue(index);
       const state = videoQueue.getState();
       const seq = syncService.recordSnapshot("queue_updated", state);
@@ -160,6 +187,116 @@ export function initSocketIO(server: HttpServer) {
       cb?.({ ok: true });
     });
 
+    socket.on("queue_move", (payload: any, cb?: Function) => {
+      if (!rateLimiter(socket))
+        return cb?.({ ok: false, error: "rate_limited" });
+      const index = payload?.index;
+      const direction = payload?.direction;
+      if (
+        typeof index !== "number" ||
+        (direction !== "up" && direction !== "down")
+      )
+        return cb?.({ ok: false, error: "invalid_payload" });
+      videoQueue.moveItem(index, direction);
+      const state = videoQueue.getState();
+      const seq = syncService.recordSnapshot("queue_updated", state);
+      io.to("lobby").emit("queue_updated", { ...state, seq });
+      cb?.({ ok: true });
+    });
+
+    socket.on("clear_queue", (cb?: Function) => {
+      if (!rateLimiter(socket))
+        return cb?.({ ok: false, error: "rate_limited" });
+      videoQueue.clearQueue();
+      const state = videoQueue.getState();
+      const seq = syncService.recordSnapshot("queue_updated", state);
+      io.to("lobby").emit("queue_updated", { ...state, seq });
+      cb?.({ ok: true });
+    });
+
+    socket.on("shuffle_queue", (cb?: Function) => {
+      if (!rateLimiter(socket))
+        return cb?.({ ok: false, error: "rate_limited" });
+      videoQueue.shuffle();
+      const state = videoQueue.getState();
+      const seq = syncService.recordSnapshot("queue_updated", state);
+      io.to("lobby").emit("queue_updated", { ...state, seq });
+      cb?.({ ok: true });
+    });
+
+    socket.on("loop_toggle", (cb?: Function) => {
+      if (!rateLimiter(socket))
+        return cb?.({ ok: false, error: "rate_limited" });
+      videoQueue.toggleLoop();
+      const state = videoQueue.getState();
+      const seq = syncService.recordSnapshot("queue_updated", state);
+      io.to("lobby").emit("queue_updated", { ...state, seq });
+      cb?.({ ok: true });
+    });
+
+    socket.on("media_playpause", () => {
+      if (!rateLimiter(socket)) return;
+      videoQueue.setPlaying(!videoQueue.getState().playback.isPlaying);
+      const state = videoQueue.getState();
+      const seq = syncService.recordSnapshot("queue_updated", state);
+      io.to("lobby").emit("queue_updated", { ...state, seq });
+    });
+
+    socket.on("media_next", () => {
+      if (!rateLimiter(socket)) return;
+      videoQueue.next();
+      const state = videoQueue.getState();
+      const seq = syncService.recordSnapshot("queue_updated", state);
+      io.to("lobby").emit("queue_updated", { ...state, seq });
+    });
+
+    socket.on("media_prev", () => {
+      if (!rateLimiter(socket)) return;
+      videoQueue.previous();
+      const state = videoQueue.getState();
+      const seq = syncService.recordSnapshot("queue_updated", state);
+      io.to("lobby").emit("queue_updated", { ...state, seq });
+    });
+
+    socket.on("media_seek", (payload: any, cb?: Function) => {
+      if (!rateLimiter(socket))
+        return cb?.({ ok: false, error: "rate_limited" });
+      const progress =
+        payload && typeof payload === "object" ? payload.progress : payload;
+      const secs = typeof progress === "number" ? progress : Number(progress);
+      if (isNaN(secs)) return cb?.({ ok: false, error: "invalid_payload" });
+      videoQueue.setPosition(secs);
+      const state = videoQueue.getState();
+      const seq = syncService.recordSnapshot("queue_updated", state);
+      io.to("lobby").emit("queue_updated", { ...state, seq });
+      cb?.({ ok: true });
+    });
+
+    socket.on("media_volume", (payload: any, cb?: Function) => {
+      if (!rateLimiter(socket))
+        return cb?.({ ok: false, error: "rate_limited" });
+      const vol =
+        payload && typeof payload === "object" ? payload.volume : payload;
+      const num = typeof vol === "number" ? vol : Number(vol);
+      if (isNaN(num)) return cb?.({ ok: false, error: "invalid_payload" });
+      videoQueue.setVolume(num);
+      const state = videoQueue.getState();
+      const seq = syncService.recordSnapshot("queue_updated", state);
+      io.to("lobby").emit("queue_updated", { ...state, seq });
+      cb?.({ ok: true });
+    });
+
+    socket.on("media_mute", (cb?: Function) => {
+      if (!rateLimiter(socket))
+        return cb?.({ ok: false, error: "rate_limited" });
+      videoQueue.toggleMute();
+      const state = videoQueue.getState();
+      const seq = syncService.recordSnapshot("queue_updated", state);
+      io.to("lobby").emit("queue_updated", { ...state, seq });
+      cb?.({ ok: true });
+    });
+
+    // ---- ownership events (unchanged) ----
     socket.on(
       "input:claim",
       (
@@ -238,14 +375,6 @@ export function initSocketIO(server: HttpServer) {
       },
     );
 
-    socket.on("media_playpause", () => {
-      if (!rateLimiter(socket)) return;
-      videoQueue.setPlaying(!videoQueue.getState().playback.isPlaying);
-      const state = videoQueue.getState();
-      const seq = syncService.recordSnapshot("queue_updated", state);
-      io.to("lobby").emit("queue_updated", { ...state, seq });
-    });
-
     socket.on(
       "resync",
       (payload: { type: string; since?: number }, cb?: Function) => {
@@ -281,7 +410,6 @@ export function initSocketIO(server: HttpServer) {
     io.to("lobby").emit("queue_updated", { ...payload, seq });
   });
 
-  // Emit ownership updates when InputService reports changes (including expirations)
   inputService.subscribeOwnership((target, owner) => {
     const seq = syncService.recordEvent("input:ownership", { target, owner });
     io.to("lobby").emit("input:ownership_updated", { target, owner, seq });

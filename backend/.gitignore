@@ -134,4 +134,6 @@ Thumbs.db
 ehthumbs.db
 Desktop.ini
 
-frontend-build/
+frontend-build
+bin
+cache
