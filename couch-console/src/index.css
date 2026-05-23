@@ -1,1 +1,25 @@
 @import "tailwindcss";
+
+/* ── Custom scrollbar (works in Webkit/Blink browsers) ── */
+.custom-scroll::-webkit-scrollbar {
+  height: 5px; /* horizontal scrollbar thickness */
+  width: 5px; /* vertical scrollbar thickness */
+}
+.custom-scroll::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: 10px;
+}
+.custom-scroll::-webkit-scrollbar-thumb {
+  background: rgba(99, 102, 241, 0.5); /* indigo-500 at 50% opacity */
+  border-radius: 10px;
+  transition: background 0.2s;
+}
+.custom-scroll::-webkit-scrollbar-thumb:hover {
+  background: rgba(99, 102, 241, 0.8);
+}
+
+/* Firefox scrollbar */
+.custom-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(99, 102, 241, 0.5) rgba(255, 255, 255, 0.03);
+}

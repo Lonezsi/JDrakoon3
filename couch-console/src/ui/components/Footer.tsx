@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import {
   MonitorPlay,
   Play,
@@ -28,8 +28,9 @@ const DEFAULT_THUMB = "https://c.tenor.com/W2_zxTEyVd8AAAAd/tenor.gif";
 export function Footer({ players }: FooterProps) {
   const media = useMediaPlayer();
   const [newUrl, setNewUrl] = useState("");
+  const [seekDrag, setSeekDrag] = useState<number | null>(null);
 
-  // Show error notification when video fails
+  // Show error notification
   useEffect(() => {
     if (media.videoError) {
       notifService.push(media.videoError);
@@ -42,6 +43,15 @@ export function Footer({ players }: FooterProps) {
       const adder = players.length > 0 ? players[0].name : "System";
       media.handleQueueAdd(newUrl.trim(), adder);
       setNewUrl("");
+    }
+  };
+
+  // Prevent Enter from propagating
+  const handleUrlKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      e.stopPropagation();
+      addItem();
     }
   };
 
@@ -59,28 +69,44 @@ export function Footer({ players }: FooterProps) {
   const progress = media.playback.position;
   const duration = currentItem?.duration || 0;
 
+  // Seek slider value: use drag value if dragging, else progress
+  const seekValue = seekDrag !== null ? seekDrag : progress;
+
+  // Seek slider background gradient
+  const seekPercent = duration ? (seekValue / duration) * 100 : 0;
+  const seekStyle = {
+    background: `linear-gradient(to right, #6366f1 0%, #6366f1 ${seekPercent}%, #a78bfa ${seekPercent}%, #a78bfa 100%)`,
+  };
+
+  // Volume slider background (always shows full, we'll make it reflect volume)
+  const volPercent = muted ? 0 : volume;
+  const volStyle = {
+    background: `linear-gradient(to right, #6366f1 0%, #6366f1 ${volPercent}%, #a78bfa ${volPercent}%, #a78bfa 100%)`,
+  };
+
   // Fullscreen wrapper classes
   const fullscreenWrapperClass = media.isFullscreen
     ? "fixed inset-0 z-50 bg-black flex items-center justify-center"
-    : "relative hidden"; // hidden when not fullscreen, but video element still needed for streaming
-  const videoClass = media.isFullscreen
-    ? "w-full h-full object-contain"
-    : "absolute opacity-0 pointer-events-none"; // invisible but functional
+    : "relative hidden";
+
+  //make currentitem next if its null
+  media.queue.length > 0 && !currentItem && media.handleNext();
 
   return (
     <div className="flex items-end gap-6 py-4">
-      {/* Video element (always rendered, position toggled by CSS) */}
+      {/* Video element (always rendered, hidden when not fullscreen) */}
       <div className={fullscreenWrapperClass}>
         <video
           ref={media.videoRef}
-          className={videoClass}
+          className={
+            media.isFullscreen
+              ? "w-full h-full object-contain"
+              : "absolute opacity-0 pointer-events-none"
+          }
           poster={currentItem?.thumbnail || DEFAULT_THUMB}
-          muted={muted}
           autoPlay
           playsInline
-          onError={() => {}} // handled by hook
         />
-        {/* Fullscreen controls overlay */}
         {media.isFullscreen && (
           <div className="absolute bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-black/80 to-transparent flex items-center gap-4">
             <button
@@ -106,10 +132,22 @@ export function Footer({ players }: FooterProps) {
                 type="range"
                 min={0}
                 max={duration || 100}
-                value={progress}
-                onChange={(e) => media.handleSeek(+e.target.value)}
+                value={seekValue}
+                onChange={(e) => setSeekDrag(+e.target.value)}
+                onMouseUp={() => {
+                  if (seekDrag !== null) {
+                    media.handleSeek(seekDrag);
+                    setSeekDrag(null);
+                  }
+                }}
+                onTouchEnd={() => {
+                  if (seekDrag !== null) {
+                    media.handleSeek(seekDrag);
+                    setSeekDrag(null);
+                  }
+                }}
                 className="w-full h-1 appearance-none rounded-full"
-                style={{ accentColor: "#6366f1" }}
+                style={seekStyle}
               />
             </div>
             <button
@@ -152,10 +190,9 @@ export function Footer({ players }: FooterProps) {
         </div>
       </div>
 
-      {/* Media Player mini (only when not fullscreen and media present) */}
+      {/* Mini player (only when not fullscreen and media present) */}
       {!media.isFullscreen && currentItem != null && (
         <div className="bg-white/5 rounded-3xl border border-white/10 p-2 gap-2 min-w-0 w-[400px] h-full flex flex-col">
-          {/* Top row: current track info + transport */}
           <div className="flex items-center gap-4">
             <div className="p-2.5 bg-indigo-500/20 rounded-xl text-indigo-400 flex-shrink-0">
               <MonitorPlay size={18} />
@@ -206,22 +243,31 @@ export function Footer({ players }: FooterProps) {
             </div>
           </div>
 
-          {/* Seekbar */}
+          {/* Seekbar in mini player (also use drag logic) */}
           <div className="flex items-center gap-2">
             <span className="text-[10px] text-gray-500 font-mono w-10 text-right">
-              {formatTime(progress)}
+              {formatTime(seekValue)}
             </span>
             <input
               type="range"
               min={0}
               max={duration || 100}
-              value={progress}
-              onChange={(e) => media.handleSeek(+e.target.value)}
-              className="flex-1 h-1.5 appearance-none rounded-full"
-              style={{
-                accentColor: "#6366f1",
-                background: `linear-gradient(90deg,#6366f1, #a78bfa)`,
+              value={seekValue}
+              onChange={(e) => setSeekDrag(+e.target.value)}
+              onMouseUp={() => {
+                if (seekDrag !== null) {
+                  media.handleSeek(seekDrag);
+                  setSeekDrag(null);
+                }
               }}
+              onTouchEnd={() => {
+                if (seekDrag !== null) {
+                  media.handleSeek(seekDrag);
+                  setSeekDrag(null);
+                }
+              }}
+              className="flex-1 h-1.5 appearance-none rounded-full"
+              style={seekStyle}
             />
             <span className="text-[10px] text-gray-500 font-mono w-10">
               {duration ? formatTime(duration) : "--:--"}
@@ -243,7 +289,7 @@ export function Footer({ players }: FooterProps) {
               value={muted ? 0 : volume}
               onChange={(e) => media.handleVolumeChange(+e.target.value)}
               className="w-20 h-1 appearance-none rounded-full"
-              style={{ accentColor: "#6366f1" }}
+              style={volStyle}
             />
             <span className="text-[10px] font-black text-slate-500 w-5">
               {muted ? 0 : volume}
@@ -327,14 +373,15 @@ export function Footer({ players }: FooterProps) {
           ))}
         </div>
 
+        {/* Add URL input – Enter now doesn't propagate */}
         <div className="flex gap-1 mt-2">
           <input
             type="text"
             value={newUrl}
             onChange={(e) => setNewUrl(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && addItem()}
+            onKeyDown={handleUrlKeyDown}
             placeholder="Add URL…"
-            className="flex-1 bg-white/5 border border-white/10 rounded-lg px-2 py-1 text-[10px] text-white placeholder-gray-600 outline-none"
+            className="flex-1 bg-white/5 border border-white/10 rounded-lg px-2 py-1 text-[10px] text-white placeholder:text-gray-500 outline-none"
             style={{ caretColor: "#6366f1" }}
           />
           <button

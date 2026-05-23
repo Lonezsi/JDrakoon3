@@ -14,7 +14,7 @@ class VideoQueueService {
     isPlaying: false,
     position: 0,
     volume: settingsService.get().media.defaultVolume,
-    muted: false,
+    muted: true,
     loop: false,
     shuffle: false,
   };

@@ -37,6 +37,7 @@ export function useMediaPlayer() {
   const [videoError, setVideoError] = useState<string | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const lastSyncTime = useRef(0);
+  const lastUrlRef = useRef<string>("");
 
   // Subscribe to queue_updated from Socket.IO
   useEffect(() => {
@@ -51,12 +52,12 @@ export function useMediaPlayer() {
     return unsub;
   }, []);
 
-  // Attach error listener to video element
+  // Attach error listener (ignore empty src)
   useEffect(() => {
     const video = videoRef.current;
     if (!video) return;
     const onError = () => {
-      if (!videoRef.current?.getAttribute("src")) return; // ignore empty src errors
+      if (!videoRef.current?.getAttribute("src")) return;
       setVideoError(video.error?.message || "Video playback failed");
     };
     video.addEventListener("error", onError);
@@ -65,29 +66,39 @@ export function useMediaPlayer() {
 
   const currentItem = queue[playback.currentIndex] || null;
 
-  // Sync video element to playback state
+  // Sync video source only when URL changes
   useEffect(() => {
     const video = videoRef.current;
     if (!video) return;
 
-    if (currentItem?.url) {
-      const streamUrl = `/stream?url=${encodeURIComponent(currentItem.url)}`;
-      if (video.getAttribute("src") !== streamUrl) {
-        video.setAttribute("src", streamUrl);
-      }
-    } else {
-      // Remove src to avoid empty-source error
+    const newUrl = currentItem?.url
+      ? `/stream?url=${encodeURIComponent(currentItem.url)}`
+      : "";
+
+    if (newUrl && newUrl !== lastUrlRef.current) {
+      video.setAttribute("src", newUrl);
+      lastUrlRef.current = newUrl;
+    } else if (!newUrl && lastUrlRef.current) {
       video.removeAttribute("src");
+      lastUrlRef.current = "";
     }
 
+    // Always keep the muted attribute in sync with playback state.
+    // Note: `muted` attribute is set initially via the JSX, but we override here.
+    video.muted = playback.muted;
+    video.volume = playback.muted ? 0 : playback.volume / 100;
+  }, [currentItem?.url, playback.muted, playback.volume]);
+
+  // Play/pause
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
     if (playback.isPlaying && currentItem) {
       video.play().catch(() => {});
     } else {
       video.pause();
     }
-
-    video.volume = playback.muted ? 0 : playback.volume / 100;
-  }, [currentItem, playback.isPlaying, playback.volume, playback.muted]);
+  }, [playback.isPlaying, currentItem]);
 
   // Seek to position when backend sends seek
   useEffect(() => {
@@ -163,7 +174,6 @@ export function useMediaPlayer() {
     sendAction({ type: "clear_queue" });
   }, []);
 
-  // Clear error after reporting
   const clearVideoError = useCallback(() => setVideoError(null), []);
 
   return {
