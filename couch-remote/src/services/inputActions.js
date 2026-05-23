@@ -44,5 +44,6 @@ export const Actions = {
 };
 
 export function sendAction(type, payload = {}) {
+  console.log("sendAction", { type, payload });
   sendFn({ type, payload });
 }

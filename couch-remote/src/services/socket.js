@@ -57,46 +57,45 @@ export function connect(url, opts = {}) {
       case "CUBE_MOVE":
         socket.emit("input:event", {
           analog: { x: payload?.x ?? 0, y: payload?.y ?? 0 },
-          buttons: {},
         });
         break;
 
       // ── A / B / X / Y ──
       case "A":
-        socket.emit("input:event", { analog: {}, buttons: { a: true } });
+        socket.emit("input:event", { buttons: { a: true } });
         break;
       case "B":
-        socket.emit("input:event", { analog: {}, buttons: { b: true } });
+        socket.emit("input:event", { buttons: { b: true } });
         break;
       case "X":
-        socket.emit("input:event", { analog: {}, buttons: { x: true } });
+        socket.emit("input:event", { buttons: { x: true } });
         break;
       case "Y":
-        socket.emit("input:event", { analog: {}, buttons: { y: true } });
+        socket.emit("input:event", { buttons: { y: true } });
         break;
 
       // ── D‑pad → directional buttons ──
       case "NAV_UP":
-        socket.emit("input:event", { analog: {}, buttons: { up: true } });
+        socket.emit("input:event", { buttons: { up: true } });
         break;
       case "NAV_DOWN":
-        socket.emit("input:event", { analog: {}, buttons: { down: true } });
+        socket.emit("input:event", { buttons: { down: true } });
         break;
       case "NAV_LEFT":
-        socket.emit("input:event", { analog: {}, buttons: { left: true } });
+        socket.emit("input:event", { buttons: { left: true } });
         break;
       case "NAV_RIGHT":
-        socket.emit("input:event", { analog: {}, buttons: { right: true } });
+        socket.emit("input:event", { buttons: { right: true } });
         break;
 
       // ── CONFIRM (A already covers it, but keep for safety) ──
       case "CONFIRM":
-        socket.emit("input:event", { analog: {}, buttons: { a: true } });
+        socket.emit("input:event", { buttons: { a: true } });
         break;
 
       // ── HOME (backend maps start → home in menu focus) ──
       case "HOME":
-        socket.emit("input:event", { analog: {}, buttons: { start: true } });
+        socket.emit("input:event", { buttons: { start: true } });
         break;
       case "MENU":
         socket.emit("action", { type: "menu" });
