@@ -27,6 +27,8 @@ export class InputManager {
   private gpLastAction = { left: 0, right: 0, a: 0 };
   private gpInitialFired = { left: false, right: false, a: false };
 
+  private externalActions: DeviceAction[] = [];
+
   // ─── Start / Stop ──────────────────────────────────────
   start() {
     // Keyboard listeners
@@ -53,6 +55,11 @@ export class InputManager {
       window.removeEventListener("keyup", onKeyUp);
       if (this.rafId) cancelAnimationFrame(this.rafId);
     };
+  }
+
+  injectActions(actions: DeviceAction[]) {
+    this.externalActions.push(...actions);
+    this.processInput();
   }
 
   // ─── Process all inputs each frame ──────────────────────
@@ -201,6 +208,13 @@ export class InputManager {
       this.gpRightPressed = false;
       this.gpAPressed = false;
     }
+
+    // Merge external actions
+    actions.push(...this.externalActions);
+    /*if (actions.length > 0) {
+      console.log("Actions:", actions);
+    }*/
+    this.externalActions = []; // clear for next frame
 
     // Notify listeners
     this.listeners.forEach((cb) => cb(actions));

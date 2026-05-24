@@ -10,7 +10,7 @@
 chunksize:2000000
 
 #allows you to customise what to ignore (ignore:<pattern1>|<pattern2>...)
-ignore:node_modules|dist|\.git|\.vs|\.vscode|\.idea|\.cache|\.next|\.nuxt|\.output|\.expo|\.expo-shared|package-lock\.json|yarn\.lock|pnpm-lock\.yaml|\.log|\.env|frontend-build|backend-build|dist|build|out|bin|obj|combine\.ps1|COMBINER\.bat|Makefile|.1|.babelrc|.bnf|.bsd|.cjs|.cmd|.coffee|.cts|.def|.editorconfig|.eslintignore|.eslintrc|.example|.flow|.gitignore|.gitkeep|.go|.info|.jshintrc|.lock|.map|.mjs|.mts|.node|.npmignore|.nycrc|.png|.prettierignore|.ps1|.py|.svg|.tmpl|.ttf|.wasm|.zip
+ignore:node_modules|dist|\.git|\.vs|\.vscode|\.idea|\.cache|\.next|\.nuxt|\.output|\.expo|\.expo-shared|package-lock\.json|yarn\.lock|pnpm-lock\.yaml|\.log|\.env|frontend-build|backend-build|dist|build|out|bin|obj|combine\.ps1|COMBINER\.bat|Makefile|.1|.babelrc|.bnf|.bsd|.cjs|.cmd|.coffee|.cts|.def|.editorconfig|.eslintignore|.eslintrc|.example|.flow|.gitignore|.gitkeep|.go|.info|.jshintrc|.lock|.map|.mjs|.mts|.node|.npmignore|.nycrc|.png|.prettierignore|.ps1|.py|.svg|.tmpl|.ttf|.wasm|.zip|.jpg|.md
 
 #detected extensions in your project:
 #.1|.babelrc|.bnf|.bsd|.cjs|.cmd|.coffee|.css|.cts|.def|.editorconfig|.eslintignore|.eslintrc|.example|.flow|.gitignore|.gitkeep|.go|.html|.info|.js|.jshintrc|.json|.jst|.jsx|.lock|.map|.markdown|.md|.mjs|.mts|.node|.npmignore|.nycrc|.php|.png|.prettierignore|.ps1|.py|.svg|.tmpl|.ts|.tsx|.ttf|.txt|.wasm|.yml|.zip

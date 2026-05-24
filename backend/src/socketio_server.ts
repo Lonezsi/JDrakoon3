@@ -108,7 +108,7 @@ export function initSocketIO(server: HttpServer) {
       io.to("lobby").emit("player_joined", { ...player, seq });
       cb?.({ ok: true, playerId });
     });
-
+    //
     socket.on("input:event", (pkt: any, cb?: Function) => {
       if (!rateLimiter(socket))
         return cb?.({ ok: false, error: "rate_limited" });

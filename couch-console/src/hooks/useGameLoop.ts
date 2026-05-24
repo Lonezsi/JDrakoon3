@@ -1,7 +1,4 @@
-import { useEffect } from "react";
-import { inputManager } from "../systems/input/inputManager";
 import { playerManager } from "../systems/player/playerManager";
-import { physicsTick } from "../systems/physics/physicsSystem";
 import type { Player } from "../shared/types";
 
 let snapshot: { players: Player[]; count: number } = {
@@ -18,17 +15,9 @@ function emitChange() {
   listeners.forEach((l) => l());
 }
 
-export function useGameLoop() {
-  useEffect(() => {
-    const unsub = inputManager.onActions((actions) => {
-      playerManager.handleActions(actions);
-      const updated = physicsTick(playerManager.players, actions);
-      playerManager.players = updated;
-      emitChange();
-    });
-    return unsub;
-  }, []);
+export { emitChange };
 
+export function useGameLoop() {
   const subscribe = (callback: () => void) => {
     listeners.add(callback);
     return () => listeners.delete(callback);
