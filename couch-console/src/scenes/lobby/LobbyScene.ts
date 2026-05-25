@@ -73,7 +73,7 @@ export class LobbyScene {
     );
     this.world.createCollider(
       RAPIER.ColliderDesc.cuboid(BOUNDS.x * 2, 0.05, BOUNDS.x * 2)
-        .setFriction(0.8)
+        .setFriction(3.0)
         .setRestitution(0.1),
       floorBody,
     );

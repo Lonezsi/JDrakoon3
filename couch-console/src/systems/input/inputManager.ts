@@ -57,7 +57,7 @@ export class InputManager {
     if (this.keys.get("d")) x1 += 1;
     actions.push({
       type: "move",
-      playerId: "p1",
+      playerId: "AWSD",
       deviceId: "keyboard1",
       deviceType: "keyboard",
       value: { x: x1, y: y1 },
@@ -71,7 +71,7 @@ export class InputManager {
     if (this.keys.get("k")) x2 += 1;
     actions.push({
       type: "move",
-      playerId: "p2",
+      playerId: "UHJK",
       deviceId: "keyboard2",
       deviceType: "keyboard",
       value: { x: x2, y: y2 },
@@ -81,6 +81,7 @@ export class InputManager {
     if (this.keys.get("arrowleft")) {
       actions.push({
         type: "navigate",
+        playerId: "AWSD",
         deviceId: "keyboard1",
         deviceType: "keyboard",
         value: { direction: "left" },
@@ -89,6 +90,7 @@ export class InputManager {
     if (this.keys.get("arrowright")) {
       actions.push({
         type: "navigate",
+        playerId: "AWSD",
         deviceId: "keyboard1",
         deviceType: "keyboard",
         value: { direction: "right" },
@@ -97,6 +99,7 @@ export class InputManager {
     if (this.keys.get("enter")) {
       actions.push({
         type: "confirm",
+        playerId: "AWSD",
         deviceId: "keyboard1",
         deviceType: "keyboard",
         value: true,
@@ -125,6 +128,7 @@ export class InputManager {
       if (gp.buttons[14]?.pressed) {
         actions.push({
           type: "navigate",
+          playerId,
           deviceId: `gamepad-${gp.index}`,
           deviceType: "gamepad",
           value: { direction: "left" },
@@ -133,6 +137,7 @@ export class InputManager {
       if (gp.buttons[15]?.pressed) {
         actions.push({
           type: "navigate",
+          playerId,
           deviceId: `gamepad-${gp.index}`,
           deviceType: "gamepad",
           value: { direction: "right" },
@@ -141,6 +146,7 @@ export class InputManager {
       if (gp.buttons[0]?.pressed) {
         actions.push({
           type: "confirm",
+          playerId,
           deviceId: `gamepad-${gp.index}`,
           deviceType: "gamepad",
           value: true,
