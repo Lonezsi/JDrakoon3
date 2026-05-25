@@ -7,6 +7,7 @@ import { videoQueue } from "./services/VideoQueueService";
 import { inputService } from "./services/InputService";
 import { syncService } from "./services/SyncService";
 import { authService } from "./services/AuthService";
+import { console } from "inspector";
 
 type RateBucket = { tokens: number; lastRefill: number };
 

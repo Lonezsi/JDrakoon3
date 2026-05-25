@@ -5,6 +5,13 @@ type MessageHandler = (msg: any) => void;
 let socket: Socket | null = null;
 const handlers: MessageHandler[] = [];
 
+const NAV_DEBOUNCE = 200; // ms
+const lastNavTime: { left: number; right: number; confirm: number } = {
+  left: 0,
+  right: 0,
+  confirm: 0,
+};
+
 function notify(msg: any) {
   handlers.forEach((fn) => fn(msg));
 }

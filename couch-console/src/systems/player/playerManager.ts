@@ -1,17 +1,8 @@
 import type { Player, DeviceAction } from "../../shared/types";
 
-const PLAYER_COLORS: Record<string, string> = {
-  p1: "#6366f1",
-  p2: "#ec4899",
-};
-
 class PlayerManager {
   players: Player[] = [];
   private subscribers: Set<(p: Player[]) => void> = new Set();
-
-  handleActions(actions: DeviceAction[]) {
-    // No longer needed for movement, but keep for future logic
-  }
 
   addPlayer(player: Player) {
     if (this.players.find((p) => p.id === player.id)) return;

@@ -101,11 +101,7 @@ class InputService {
 
     let dx = analog.x;
     let dy = analog.y;
-    if (Math.abs(dx) < deadzone) dx = 0;
-    if (Math.abs(dy) < deadzone) dy = 0;
-    if (dx !== 0 || dy !== 0) {
-      actions.push({ type: "move", playerId, dx, dy });
-    }
+    actions.push({ type: "move", playerId, dx, dy });
 
     if (this.currentFocus === "menu") {
       if (buttons.up)

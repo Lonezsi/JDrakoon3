@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo, useRef } from "react";
+import { useEffect, useState, useMemo, useRef, useCallback } from "react";
 import { appState } from "./core/stateMachine";
 import { events } from "./core/events";
 import { launchApp } from "./services/launcherService";
@@ -16,22 +16,73 @@ import { PhoneQR } from "./ui/components/PhoneQR";
 import { MOCK_APPS as library } from "./shared/constants";
 import type { AppState, Player } from "./shared/types";
 
+// ---------------------------------------------------------------
+// Global debounce hook – one single cooldown for all navigation
+// ---------------------------------------------------------------
+function useDebouncedNavigation(
+  activeIndex: number,
+  setActiveIndex: React.Dispatch<React.SetStateAction<number>>,
+  libraryLength: number,
+) {
+  const lastActionTime = useRef(0);
+  const activeIndexRef = useRef(activeIndex);
+
+  // keep the ref in sync
+  useEffect(() => {
+    activeIndexRef.current = activeIndex;
+  }, [activeIndex]);
+
+  const navigateLeft = useCallback(() => {
+    if (appState.current !== "HOME") return;
+    const now = Date.now();
+    if (now - lastActionTime.current < 300) return;
+    lastActionTime.current = now;
+    setActiveIndex((prev) => Math.max(prev - 1, 0));
+  }, [setActiveIndex]);
+
+  const navigateRight = useCallback(() => {
+    if (appState.current !== "HOME") return;
+    const now = Date.now();
+    if (now - lastActionTime.current < 300) return;
+    lastActionTime.current = now;
+    setActiveIndex((prev) => Math.min(prev + 1, libraryLength - 1));
+  }, [setActiveIndex, libraryLength]);
+
+  const confirm = useCallback(() => {
+    if (appState.current !== "HOME") return;
+    const now = Date.now();
+    if (now - lastActionTime.current < 300) return;
+    lastActionTime.current = now;
+    const idx = activeIndexRef.current;
+    if (idx >= 0 && idx < library.length) {
+      launchApp(library[idx]);
+    }
+  }, []);
+
+  return { navigateLeft, navigateRight, confirm };
+}
+
+// ---------------------------------------------------------------
 export default function App() {
   const [state, setState] = useState<AppState>("BOOT");
   const [activeIndex, setActiveIndex] = useState(0);
   const [remotePlayers, setRemotePlayers] = useState<Player[]>([]);
+
   const remotePlayerIds = useMemo(
     () => new Set(remotePlayers.map((p) => p.id)),
     [remotePlayers],
   );
-  const navigateDebounceRef = useRef<number>(null);
 
-  const gameState = useGameLoop(); // UI state only
+  const gameState = useGameLoop();
   const clock = useClock();
-
   const allPlayers = useMemo(() => gameState.players, [gameState.players]);
-
   const { mountRef, sceneRef } = useLobbyRenderer(allPlayers);
+
+  const { navigateLeft, navigateRight, confirm } = useDebouncedNavigation(
+    activeIndex,
+    setActiveIndex,
+    library.length,
+  );
 
   // Boot → HOME
   useEffect(() => {
@@ -43,60 +94,67 @@ export default function App() {
     return () => clearTimeout(t);
   }, [state]);
 
-  // Add default local players to playerManager (so they appear in UI)
+  // State machine listener
   useEffect(() => {
-    const p1: Player = {
-      id: "p1",
-      name: "P1",
-      color: "#6366f1",
-      pos: { x: -2, z: 0 },
-      vel: { x: 0, z: 0 },
-      deviceType: "keyboard",
-    };
-    const p2: Player = {
-      id: "p2",
-      name: "P2",
-      color: "#ec4899",
-      pos: { x: 2, z: 0 },
-      vel: { x: 0, z: 0 },
-      deviceType: "keyboard",
-    };
-    playerManager.addPlayer(p1);
-    playerManager.addPlayer(p2);
-    emitChange();
+    const unsub = events.on("state:change", (newState: AppState) =>
+      setState(newState),
+    );
+    return unsub;
   }, []);
 
-  // Wire scene.onUpdate → playerManager → React
+  // scene.onUpdate → playerManager
   useEffect(() => {
     if (!sceneRef.current) return;
     sceneRef.current.onUpdate = (players) => {
       playerManager.players = players;
-      emitChange(); // triggers UI refresh
+      emitChange();
     };
     return () => {
       if (sceneRef.current) sceneRef.current.onUpdate = undefined;
     };
   }, [sceneRef]);
 
-  // All movement (keyboard + remote) goes directly to the scene
+  // ---------------------------------------------------------------
+  // LOCAL INPUT: movement + debounced navigation
+  // ---------------------------------------------------------------
   useEffect(() => {
-    const unsub = inputManager.onActions((actions) => {
-      // Handle navigation/confirm (unchanged)
-      if (appState.current === "HOME") {
-        actions.forEach((a) => {
-          if (a.type === "navigate") {
-            const val = a.value as { direction: string };
-            if (val.direction === "right")
-              setActiveIndex((i) => Math.min(i + 1, library.length - 1));
-            else if (val.direction === "left")
-              setActiveIndex((i) => Math.max(i - 1, 0));
-          } else if (a.type === "confirm") {
-            launchApp(library[activeIndex]);
-          }
-        });
-      }
+    const nameCounters = new Map<string, number>();
+    const colorPalette = [
+      "#6366f1",
+      "#ec4899",
+      "#10b981",
+      "#f59e0b",
+      "#ef4444",
+      "#3b82f6",
+      "#8b5cf6",
+      "#f97316",
+    ];
+    let colorIndex = 0;
 
-      // Process move actions
+    function ensurePlayerExists(playerId: string) {
+      if (playerManager.players.find((p) => p.id === playerId)) return;
+      let baseName = "Player";
+      if (playerId.startsWith("p")) baseName = "P";
+      else if (playerId.startsWith("gp")) baseName = "GP";
+      const count = (nameCounters.get(baseName) ?? 0) + 1;
+      nameCounters.set(baseName, count);
+      const name = `${baseName}${count}`;
+      const color = colorPalette[colorIndex % colorPalette.length];
+      colorIndex++;
+      const newPlayer: Player = {
+        id: playerId,
+        name,
+        color,
+        pos: { x: (Math.random() - 0.5) * 6, z: (Math.random() - 0.5) * 5 },
+        vel: { x: 0, z: 0 },
+        deviceType: "keyboard",
+      };
+      playerManager.addPlayer(newPlayer);
+      emitChange();
+    }
+
+    const unsub = inputManager.onActions((actions) => {
+      // --- movement processing ---
       const movedIds = new Set<string>();
       for (const action of actions) {
         if (
@@ -105,6 +163,7 @@ export default function App() {
           action.value &&
           typeof action.value !== "boolean"
         ) {
+          ensurePlayerExists(action.playerId);
           const moveValue = action.value as { x: number; y: number };
           movedIds.add(action.playerId);
           const speed = 8;
@@ -114,19 +173,36 @@ export default function App() {
             moveValue.y * speed,
           );
         }
+        // --- debounced navigation ---
+        else if (action.type === "navigate") {
+          const dir = (action.value as { direction: string } | undefined)
+            ?.direction;
+          if (dir === "left") navigateLeft();
+          else if (dir === "right") navigateRight();
+        } else if (action.type === "confirm") {
+          confirm();
+        }
       }
 
-      // Stop any player that didn't get a move action this frame
+      // stop any local player that didn't send a move this frame
       playerManager.players.forEach((p) => {
         if (!movedIds.has(p.id) && !remotePlayerIds.has(p.id)) {
           sceneRef.current?.setPlayerInput(p.id, 0, 0);
         }
       });
     });
-    return unsub;
-  }, [sceneRef, remotePlayerIds, activeIndex]);
 
-  // Socket & remote handling
+    const stopInput = inputManager.start();
+
+    return () => {
+      unsub();
+      stopInput();
+    };
+  }, [sceneRef, remotePlayerIds, navigateLeft, navigateRight, confirm]);
+
+  // ---------------------------------------------------------------
+  // SOCKET & REMOTE HANDLING
+  // ---------------------------------------------------------------
   useEffect(() => {
     if (state === "BOOT") return;
 
@@ -161,39 +237,31 @@ export default function App() {
           emitChange();
           break;
         }
-        case "navigate":
-          if (appState.current === "HOME" && msg.direction) {
-            if (msg.direction === "right")
-              setActiveIndex((i) => Math.min(i + 1, library.length - 1));
-            else if (msg.direction === "left")
-              setActiveIndex((i) => Math.max(i - 1, 0));
-          }
+        case "navigate": {
+          if (msg.direction === "left") navigateLeft();
+          else if (msg.direction === "right") navigateRight();
           break;
+        }
         case "confirm":
-          if (appState.current === "HOME") launchApp(library[activeIndex]);
+          confirm();
           break;
         case "home":
           appState.transition("HOME");
           setActiveIndex(0);
           break;
         case "action": {
-          if (appState.current !== "HOME") break;
+          // treat "action" messages the same way as direct navigate/confirm
           const action = msg;
           if (action.type === "navigate" && action.value?.direction) {
-            const now = Date.now();
-            if (now - (navigateDebounceRef.current ?? 0) < 300) break;
-            navigateDebounceRef.current = now;
-            if (action.value.direction === "right")
-              setActiveIndex((i) => Math.min(i + 1, library.length - 1));
-            else if (action.value.direction === "left")
-              setActiveIndex((i) => Math.max(i - 1, 0));
+            if (action.value.direction === "left") navigateLeft();
+            else if (action.value.direction === "right") navigateRight();
           } else if (action.type === "confirm") {
-            launchApp(library[activeIndex]);
+            confirm();
           }
           break;
         }
         case "move": {
-          // Remote thumbstick input
+          // inject remote thumbstick into the local input pipeline
           const moveMsg = msg as {
             playerId: string;
             dx: number;
@@ -216,38 +284,13 @@ export default function App() {
       }
     });
 
-    const stopInput = inputManager.start();
-    const unsubInput = inputManager.onActions((actions) => {
-      if (appState.current !== "HOME") return;
-      actions.forEach((a) => {
-        if (a.type === "navigate") {
-          const val = a.value as { direction: string };
-          if (val.direction === "right")
-            setActiveIndex((i) => Math.min(i + 1, library.length - 1));
-          else if (val.direction === "left")
-            setActiveIndex((i) => Math.max(i - 1, 0));
-        } else if (a.type === "confirm") {
-          launchApp(library[activeIndex]);
-        }
-      });
-    });
-
     return () => {
       unsub();
       socket?.disconnect();
-      unsubInput();
-      stopInput();
     };
-  }, [state]);
+  }, [state, navigateLeft, navigateRight, confirm]);
 
-  // State machine listener
-  useEffect(() => {
-    const unsub = events.on("state:change", (newState: AppState) =>
-      setState(newState),
-    );
-    return unsub;
-  }, []);
-
+  // ---------------------------------------------------------------
   if (state === "BOOT") return <BootScreen />;
 
   return (
@@ -267,6 +310,9 @@ export default function App() {
           clock={clock}
           players={allPlayers}
           activeIndex={activeIndex}
+          onLeft={navigateLeft}
+          onRight={navigateRight}
+          onConfirm={confirm}
           setActiveIndex={setActiveIndex}
         />
       </div>
