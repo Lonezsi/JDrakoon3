@@ -4,10 +4,12 @@ import logger from "../utils/logger";
 import { handleMessage } from "./handlers";
 import { broadcast } from "./broadcast";
 import { lobbySync } from "../services/LobbySyncService";
+import { videoQueue } from "../services/VideoQueueService";
 
 export interface ExtendedWebSocket extends WebSocket {
   playerId?: string;
   isAlive?: boolean;
+  pendingIds?: Set<string>;
 }
 
 const clients = new Map<string, ExtendedWebSocket>();
@@ -36,6 +38,37 @@ export function initWebSocketServer(httpServer: Server) {
       ws.isAlive = true;
     });
 
+    // Track optimistic pending IDs created by this connection so we can
+    // forward add-failure events only to the originating client.
+    ws.pendingIds = new Set<string>();
+
+    // Forward queue add errors to the originating websocket (if it owns
+    // the pending id). The returned unsubscribe is called on close.
+    const unsubQueueError = videoQueue.onError((pendingId, url, message) => {
+      try {
+        if (
+          ws.pendingIds &&
+          ws.pendingIds.has(pendingId) &&
+          ws.readyState === WebSocket.OPEN
+        ) {
+          ws.send(
+            JSON.stringify({
+              type: "queue_add_failed",
+              pendingId,
+              url,
+              message,
+            }),
+          );
+          ws.pendingIds.delete(pendingId);
+        }
+      } catch (err) {
+        logger.warn(
+          "Failed to forward queue_add_failed to websocket client:",
+          err,
+        );
+      }
+    });
+
     ws.on("message", async (data: string) => {
       try {
         const msg = JSON.parse(data.toString());
@@ -46,6 +79,11 @@ export function initWebSocketServer(httpServer: Server) {
     });
 
     ws.on("close", () => {
+      try {
+        unsubQueueError && unsubQueueError();
+      } catch (err) {
+        logger.warn("Error unsubscribing websocket queue error handler:", err);
+      }
       if (ws.playerId) {
         clients.delete(ws.playerId);
         lobbySync.removePlayer(ws.playerId);
@@ -61,6 +99,11 @@ export function initWebSocketServer(httpServer: Server) {
       ws.ping();
     });
   }, 30000);
+
+  // Broadcast queue updates (including pending items) to websocket clients.
+  videoQueue.subscribe((queue, playback, pendingItems) => {
+    broadcast("queue_updated", { queue, playback, pendingItems });
+  });
 
   return wss;
 }

@@ -2,11 +2,17 @@
   id: string;
   name: string;
   color: string;
-  deviceType: 'phone' | 'gamepad';
+  deviceType: "phone" | "gamepad";
   isActive: boolean;
   lastSeen: number;
   pos: { x: number; z: number };
   vel: { x: number; z: number };
+}
+
+export interface PendingQueueItem {
+  id: string;
+  url: string;
+  requestedBy: string;
 }
 
 export interface QueueItem {

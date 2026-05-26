@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect } from "react";
 import {
   MonitorPlay,
   Play,
@@ -15,6 +15,7 @@ import {
   Plus,
   Settings,
   LogOut,
+  Loader2,
 } from "lucide-react";
 import { useMediaPlayer } from "../../hooks/useMediaPlayer";
 import { notifService } from "../../services/notificationService";
@@ -39,14 +40,12 @@ export function Footer({ players }: FooterProps) {
   }, [media.videoError, media.clearVideoError]);
 
   const addItem = () => {
-    if (newUrl.trim()) {
-      const adder = players.length > 0 ? players[0].name : "System";
-      media.handleQueueAdd(newUrl.trim(), adder);
-      setNewUrl("");
-    }
+    if (!newUrl.trim()) return;
+    const adder = players.length > 0 ? players[0].name : "System";
+    media.handleQueueAdd(newUrl.trim(), adder);
+    setNewUrl("");
   };
 
-  // Prevent Enter from propagating
   const handleUrlKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter") {
       e.preventDefault();
@@ -69,32 +68,27 @@ export function Footer({ players }: FooterProps) {
   const progress = media.playback.position;
   const duration = currentItem?.duration || 0;
 
-  // Seek slider value: use drag value if dragging, else progress
   const seekValue = seekDrag !== null ? seekDrag : progress;
-
-  // Seek slider background gradient
   const seekPercent = duration ? (seekValue / duration) * 100 : 0;
   const seekStyle = {
     background: `linear-gradient(to right, #6366f1 0%, #6366f1 ${seekPercent}%, #a78bfa ${seekPercent}%, #a78bfa 100%)`,
   };
 
-  // Volume slider background (always shows full, we'll make it reflect volume)
   const volPercent = muted ? 0 : volume;
   const volStyle = {
     background: `linear-gradient(to right, #6366f1 0%, #6366f1 ${volPercent}%, #a78bfa ${volPercent}%, #a78bfa 100%)`,
   };
 
-  // Fullscreen wrapper classes
   const fullscreenWrapperClass = media.isFullscreen
     ? "fixed inset-0 z-50 bg-black flex items-center justify-center"
     : "relative hidden";
 
-  //make currentitem next if its null
-  media.queue.length > 0 && !currentItem && media.handleNext();
+  // Total item count for "Clear" visibility
+  const totalQueueCount = media.queue.length + media.pendingItems.length;
 
   return (
     <div className="flex items-end gap-6 py-4">
-      {/* Video element (always rendered, hidden when not fullscreen) */}
+      {/* Video element */}
       <div className={fullscreenWrapperClass}>
         <video
           ref={media.videoRef}
@@ -190,7 +184,7 @@ export function Footer({ players }: FooterProps) {
         </div>
       </div>
 
-      {/* Mini player (only when not fullscreen and media present) */}
+      {/* Mini player */}
       {!media.isFullscreen && currentItem != null && (
         <div className="bg-white/5 rounded-3xl border border-white/10 p-2 gap-2 min-w-0 w-[400px] h-full flex flex-col">
           <div className="flex items-center gap-4">
@@ -243,7 +237,7 @@ export function Footer({ players }: FooterProps) {
             </div>
           </div>
 
-          {/* Seekbar in mini player (also use drag logic) */}
+          {/* Seekbar */}
           <div className="flex items-center gap-2">
             <span className="text-[10px] text-gray-500 font-mono w-10 text-right">
               {formatTime(seekValue)}
@@ -304,7 +298,7 @@ export function Footer({ players }: FooterProps) {
                 <Maximize size={14} />
               )}
             </button>
-            {media.queue.length > 0 && (
+            {totalQueueCount > 0 && (
               <button
                 onClick={media.handleClearQueue}
                 className="ml-auto text-[10px] text-red-400 font-black uppercase tracking-wider hover:text-red-300"
@@ -318,19 +312,21 @@ export function Footer({ players }: FooterProps) {
 
       {/* Queue */}
       <div className="flex flex-col flex-1 min-w-0 items-start">
-        <h3 className="shrink-0 text-[10px] font-black text-gray-600 uppercase tracking-widest mb-1 flex gap-1">
+        <h3 className="shrink-0 text-[10px] font-black text-gray-600 uppercase tracking-widest mb-1">
           Queue
         </h3>
         <div className="w-full flex gap-2 overflow-x-auto py-1 custom-scroll">
-          {media.queue.length === 0 && (
+          {totalQueueCount === 0 && (
             <p className="text-[10px] text-gray-700 italic text-center py-2">
               Empty
             </p>
           )}
+
+          {/* Confirmed queue items */}
           {media.queue.map((item, idx) => (
             <div
               key={item.id}
-              className={`w-44 flex-shrink-0 flex items-start gap-2 rounded-xl p-2 border ${
+              className={`queue-card w-44 flex-shrink-0 flex items-start gap-2 rounded-xl p-2 border ${
                 idx === media.playback.currentIndex
                   ? "border-indigo-500/40 bg-indigo-500/10"
                   : "border-white/5 bg-white/5"
@@ -371,9 +367,32 @@ export function Footer({ players }: FooterProps) {
               </button>
             </div>
           ))}
+
+          {/* Pending (optimistic) items — shown with loading shimmer */}
+          {media.pendingItems.map((item) => (
+            <div
+              key={item.id}
+              className="w-44 flex-shrink-0 flex items-start gap-2 rounded-xl p-2 border border-indigo-500/20 bg-indigo-500/5 animate-pulse"
+            >
+              {/* Placeholder thumbnail */}
+              <div className="w-12 h-12 rounded bg-white/10 flex-shrink-0 flex items-center justify-center">
+                <Loader2 size={16} className="text-indigo-400 animate-spin" />
+              </div>
+              <div className="flex-1 min-w-0 space-y-1.5 pt-1">
+                {/* Shimmer lines */}
+                <div className="h-2 bg-white/10 rounded-full w-4/5" />
+                <div className="h-1.5 bg-white/5 rounded-full w-3/5" />
+                <p className="text-[8px] text-indigo-400/70 mt-1">
+                  {item.retries > 0
+                    ? `retrying… (${item.retries})`
+                    : "loading…"}
+                </p>
+              </div>
+            </div>
+          ))}
         </div>
 
-        {/* Add URL input – Enter now doesn't propagate */}
+        {/* Add URL input */}
         <div className="flex gap-1 mt-2">
           <input
             type="text"

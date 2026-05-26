@@ -1,24 +1,24 @@
-﻿import { ExtendedWebSocket, registerClient, getClient } from './server';
-import { broadcast } from './broadcast';
-import { v4 as uuidv4 } from 'uuid';
-import { Player, Action } from '../models/types';
-import { inputService } from '../services/InputService';
-import { lobbySync } from '../services/LobbySyncService';
-import { appLauncher } from '../services/AppLauncher';
-import { videoQueue } from '../services/VideoQueueService';
-import { settingsService } from '../services/SettingsService';
-import { gameScanner } from '../services/GameScanner';
-import logger from '../utils/logger';
+﻿import { ExtendedWebSocket, registerClient, getClient } from "./server";
+import { broadcast } from "./broadcast";
+import { v4 as uuidv4 } from "uuid";
+import { Player, Action } from "../models/types";
+import { inputService } from "../services/InputService";
+import { lobbySync } from "../services/LobbySyncService";
+import { appLauncher } from "../services/AppLauncher";
+import { videoQueue } from "../services/VideoQueueService";
+import { settingsService } from "../services/SettingsService";
+import { gameScanner } from "../services/GameScanner";
+import logger from "../utils/logger";
 
 export async function handleMessage(ws: ExtendedWebSocket, msg: any) {
   switch (msg.type) {
-    case 'join':
+    case "join":
       const playerId = uuidv4();
       const player: Player = {
         id: playerId,
-        name: msg.name || 'Guest',
-        color: msg.color || '#6366f1',
-        deviceType: msg.deviceType || 'phone',
+        name: msg.name || "Guest",
+        color: msg.color || "#6366f1",
+        deviceType: msg.deviceType || "phone",
         isActive: true,
         lastSeen: Date.now(),
         pos: { x: 0, z: 0 },
@@ -26,11 +26,11 @@ export async function handleMessage(ws: ExtendedWebSocket, msg: any) {
       };
       registerClient(ws, playerId);
       lobbySync.addPlayer(player);
-      broadcast('player_joined', player);
-      ws.send(JSON.stringify({ type: 'joined', playerId }));
+      broadcast("player_joined", player);
+      ws.send(JSON.stringify({ type: "joined", playerId }));
       break;
 
-    case 'input':
+    case "input":
       if (!ws.playerId) return;
       const actions = inputService.processInput({
         playerId: ws.playerId,
@@ -38,114 +38,133 @@ export async function handleMessage(ws: ExtendedWebSocket, msg: any) {
         analog: msg.analog,
       });
       for (const action of actions) {
-        broadcast('action', action);
-        if (action.type === 'move' || action.type === 'emote' || action.type === 'jump') {
+        broadcast("action", action);
+        if (
+          action.type === "move" ||
+          action.type === "emote" ||
+          action.type === "jump"
+        ) {
           lobbySync.handleAction(action);
         }
       }
       break;
 
-    case 'action':
+    case "action":
       if (!ws.playerId) return;
       const action = msg.action;
       action.playerId = ws.playerId;
-      broadcast('action', action);
-      if (action.type === 'move' || action.type === 'emote' || action.type === 'jump') {
+      broadcast("action", action);
+      if (
+        action.type === "move" ||
+        action.type === "emote" ||
+        action.type === "jump"
+      ) {
         lobbySync.handleAction(action);
       }
       break;
 
-    case 'queue_add':
-      const item = await videoQueue.addToQueue(msg.url, msg.requestedBy || 'Phone');
-      if (item) broadcast('queue_updated', videoQueue.getState());
+    case "queue_add":
+      // If the client supplied a pendingId for optimistic UI, track it on
+      // the websocket so we can forward any add-failure back to that socket.
+      if (typeof msg.pendingId === "string") {
+        ws.pendingIds = ws.pendingIds || new Set<string>();
+        ws.pendingIds.add(msg.pendingId);
+      }
+      await videoQueue.addToQueue(
+        msg.url,
+        msg.requestedBy || "Phone",
+        msg.pendingId ?? undefined,
+      );
       break;
 
-    case 'queue_remove':
+    case "queue_remove":
       videoQueue.removeFromQueue(msg.index);
-      broadcast('queue_updated', videoQueue.getState());
+      broadcast("queue_updated", videoQueue.getState());
       break;
 
-    case 'queue_move':
+    case "queue_move":
       videoQueue.moveItem(msg.index, msg.direction);
-      broadcast('queue_updated', videoQueue.getState());
+      broadcast("queue_updated", videoQueue.getState());
       break;
 
-    case 'clear_queue':
+    case "clear_queue":
       videoQueue.clearQueue();
-      broadcast('queue_updated', videoQueue.getState());
+      broadcast("queue_updated", videoQueue.getState());
       break;
 
-    case 'shuffle_queue':
+    case "shuffle_queue":
       videoQueue.shuffle();
-      broadcast('queue_updated', videoQueue.getState());
+      broadcast("queue_updated", videoQueue.getState());
       break;
 
-    case 'loop_toggle':
+    case "loop_toggle":
       videoQueue.toggleLoop();
-      broadcast('queue_updated', videoQueue.getState());
+      broadcast("queue_updated", videoQueue.getState());
       break;
 
-    case 'media_playpause':
+    case "media_playpause":
       videoQueue.setPlaying(!videoQueue.getState().playback.isPlaying);
       break;
 
-    case 'media_next':
+    case "media_next":
       videoQueue.next();
       break;
 
-    case 'media_prev':
+    case "media_prev":
       videoQueue.previous();
       break;
 
-    case 'media_seek':
+    case "media_seek":
       videoQueue.setPosition(msg.progress);
       break;
 
-    case 'media_volume':
+    case "media_volume":
       videoQueue.setVolume(msg.volume);
       break;
 
-    case 'media_mute':
+    case "media_mute":
       videoQueue.toggleMute();
       break;
 
-    case 'launch_app':
+    case "launch_app":
       const apps = gameScanner.getLibrary();
-      const app = apps.find(a => a.id === msg.appId);
+      const app = apps.find((a) => a.id === msg.appId);
       if (app) {
         const launched = await appLauncher.launch(app);
         if (launched) {
-          broadcast('app_launched', { appId: app.id });
-          inputService.setFocus('fullscreen');
+          broadcast("app_launched", { appId: app.id });
+          inputService.setFocus("fullscreen");
         }
       }
       break;
 
-    case 'close_app':
+    case "close_app":
       await appLauncher.close();
-      broadcast('app_closed', {});
-      inputService.setFocus('menu');
+      broadcast("app_closed", {});
+      inputService.setFocus("menu");
       break;
 
-    case 'settings_get':
-      ws.send(JSON.stringify({ type: 'settings', settings: settingsService.get() }));
+    case "settings_get":
+      ws.send(
+        JSON.stringify({ type: "settings", settings: settingsService.get() }),
+      );
       break;
 
-    case 'settings_update':
+    case "settings_update":
       await settingsService.update(msg.settings);
-      broadcast('settings_updated', settingsService.get());
+      broadcast("settings_updated", settingsService.get());
       break;
 
-    case 'scan_library':
+    case "scan_library":
       const library = await gameScanner.scan();
-      broadcast('library_updated', library);
+      broadcast("library_updated", library);
       break;
 
-    case 'ping':
-      ws.send(JSON.stringify({ type: 'pong' }));
+    case "ping":
+      ws.send(JSON.stringify({ type: "pong" }));
       break;
 
     default:
-      logger.warn('Unknown message type:', msg.type);
+      logger.warn("Unknown message type:", msg.type);
   }
 }

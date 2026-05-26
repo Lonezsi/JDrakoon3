@@ -107,20 +107,41 @@ async function ensureYtDlp(): Promise<string> {
 
 export async function getVideoInfo(url: string): Promise<VideoInfo> {
   const ytdlp = await ensureYtDlp();
+  const isDirectMedia = /\.(mp3|mp4|webm|ogg|flac|wav)(\?.*)?$/i.test(url);
+
   try {
     const { stdout } = await execAsync(`"${ytdlp}" -j "${url}"`, {
-      timeout: 15000,
+      timeout: 60000,
     });
     const data = JSON.parse(stdout);
+
+    // If yt-dlp returned JSON but it's missing a title, treat that as an
+    // extraction failure for non-direct-media URLs so the add operation
+    // will fail and the client can be notified.
+    const id = data.id || url;
+    const title = data.title;
+    if (!title && !isDirectMedia) {
+      throw new Error("Incomplete metadata from yt-dlp");
+    }
+
     return {
-      id: data.id || url,
-      title: data.title || url,
+      id,
+      title: title || url,
       duration: data.duration || 0,
       thumbnail: data.thumbnail || "",
     };
   } catch (err) {
-    logger.warn("yt-dlp info extraction failed, returning minimal info");
-    return { id: url, title: url, duration: 0, thumbnail: "" };
+    const msg = err instanceof Error ? err.message : String(err);
+
+    if (isDirectMedia) {
+      // Allow minimal info for direct media links so streaming can still
+      // work even if yt-dlp can't extract metadata.
+      return { id: url, title: url, duration: 0, thumbnail: "" };
+    }
+
+    // For non-direct media, surface the error so callers can reject the add
+    // and notify the originating client.
+    throw err;
   }
 }
 

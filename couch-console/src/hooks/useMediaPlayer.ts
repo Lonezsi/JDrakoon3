@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { subscribe, sendAction } from "../services/socket";
+import { notifService } from "../services/notificationService";
 
 export interface QueueItem {
   id: string;
@@ -8,6 +9,15 @@ export interface QueueItem {
   duration: number;
   thumbnail: string;
   requestedBy: string;
+}
+
+interface PendingItem {
+  id: string;
+  url: string;
+  requestedBy: string;
+  createdAt: number;
+  retries: number;
+  sending: boolean; // true while a request is in flight
 }
 
 export interface PlaybackState {
@@ -21,9 +31,13 @@ export interface PlaybackState {
 }
 
 const DEFAULT_THUMB = "https://c.tenor.com/W2_zxTEyVd8AAAAd/tenor.gif";
+const PENDING_TIMEOUT_MS = 5000; // first wait
+const MAX_RETRIES = 2; // total attempts = initial + 2 retries
+const RETRY_DELAYS = [5000, 10000, 20000]; // ms between retries (index = attempt-1)
 
 export function useMediaPlayer() {
   const [queue, setQueue] = useState<QueueItem[]>([]);
+  const [pendingItems, setPendingItems] = useState<PendingItem[]>([]);
   const [playback, setPlayback] = useState<PlaybackState>({
     currentIndex: 0,
     isPlaying: false,
@@ -39,20 +53,154 @@ export function useMediaPlayer() {
   const lastSyncTime = useRef(0);
   const lastUrlRef = useRef<string>("");
 
-  // Subscribe to queue_updated from Socket.IO
+  // ─── FIX 1: suppress echo-back position sync after user-initiated changes ──
+  // When volume or seek events are sent, the server echoes back the full
+  // playback state (including position). That stored position can lag by up
+  // to ~1 s, which was previously triggering unwanted seeks while playing.
+  const suppressSyncUntil = useRef(0);
+
+  // ─── FIX 2: auto-play the very first item added to an empty queue ──────────
+  const prevQueueLen = useRef(0);
+  const hasSeenInitialQueue = useRef(false);
+
+  // ─── Socket subscription ───────────────────────────────────────────────────
   useEffect(() => {
     const unsub = subscribe((msg) => {
       if (msg.type === "queue_updated") {
-        if (msg.queue) setQueue(msg.queue);
+        if (msg.queue) {
+          // On the very first snapshot, initialise prevQueueLen so we don't
+          // auto-play an already-populated queue when connecting/reconnecting.
+          if (!hasSeenInitialQueue.current) {
+            prevQueueLen.current = msg.queue.length;
+            hasSeenInitialQueue.current = true;
+          }
+          setQueue(msg.queue);
+          setPendingItems((prev) =>
+            prev.filter(
+              (p) => !msg.queue.some((q: QueueItem) => q.url === p.url),
+            ),
+          );
+        }
         if (msg.playback) {
           setPlayback((prev) => ({ ...prev, ...msg.playback }));
         }
+      }
+      if (msg.type === "video_error") {
+        notifService.push(`Failed to add: ${msg.message}`);
+        //delete pending item so it doesn't retry endlessly
+        setPendingItems((prev) => prev.filter((p) => p.id !== msg.pendingId));
+      }
+      if (msg.type === "queue_add_failed") {
+        // server-side failures may be forwarded as `queue_add_failed`
+        notifService.push(`Failed to add: ${msg.message}`);
+        setPendingItems((prev) => prev.filter((p) => p.id !== msg.pendingId));
       }
     });
     return unsub;
   }, []);
 
-  // Attach error listener (ignore empty src)
+  // ─── Auto-play when first item arrives in a previously-empty queue ─────────
+  useEffect(() => {
+    if (queue.length === 1 && prevQueueLen.current === 0) {
+      // Don't auto-play if the user has already manually paused something
+      // (playback.isPlaying would be false from a pause action, not from
+      //  "nothing ever played"). Since this is the very first item, it's
+      //  safe to start.
+      sendAction({ type: "media_playpause" });
+    }
+    prevQueueLen.current = queue.length;
+  }, [queue.length]);
+
+  // ─── Retry stale pending items ─────────────────────────────────────────────
+  useEffect(() => {
+    if (pendingItems.length === 0) return;
+
+    const checkAndRetry = () => {
+      const now = Date.now();
+      setPendingItems((prev) => {
+        const next = prev
+          .map((item) => {
+            if (item.sending) return item; // wait for current request to finish
+            const age = now - item.createdAt;
+            const delayIndex = Math.min(item.retries, RETRY_DELAYS.length - 1);
+            const requiredDelay = RETRY_DELAYS[delayIndex];
+            if (age >= requiredDelay && item.retries < MAX_RETRIES) {
+              // send again
+              sendAction(
+                {
+                  type: "queue_add",
+                  payload: {
+                    url: item.url,
+                    requestedBy: item.requestedBy,
+                    pendingId: item.id,
+                  },
+                },
+                (ack: any) => {
+                  if (ack && ack.ok === false) {
+                    // mark as error and remove
+                    setPendingItems((prev) =>
+                      prev.filter((p) => p.id !== item.id),
+                    );
+                    notifService.push(`Failed to add: ${item.url}`);
+                  } else {
+                    // success: remove (we'll handle in queue_updated too, but just in case)
+                    setPendingItems((prev) =>
+                      prev.filter((p) => p.id !== item.id),
+                    );
+                  }
+                },
+              );
+              return {
+                ...item,
+                retries: item.retries + 1,
+                sending: true,
+                createdAt: now,
+              };
+            }
+            if (item.retries >= MAX_RETRIES && age >= requiredDelay) {
+              // final failure – remove and notify
+              notifService.push(
+                `Failed to add: ${item.url} after ${MAX_RETRIES + 1} attempts`,
+              );
+              return null; // mark for removal
+            }
+            return item;
+          })
+          .filter(Boolean) as PendingItem[];
+        return next;
+      });
+    };
+
+    const interval = setInterval(checkAndRetry, 1000);
+    return () => clearInterval(interval);
+  }, [pendingItems.length]);
+
+  // When queue_updated arrives, remove any pending items whose URLs are now in the queue
+  useEffect(() => {
+    if (pendingItems.length === 0) return;
+    const unsub = subscribe((msg) => {
+      if (msg.type === "queue_updated" && msg.queue) {
+        const queueUrls = new Set(msg.queue.map((item: any) => item.url));
+        setPendingItems((prev) => prev.filter((p) => !queueUrls.has(p.url)));
+      }
+    });
+    return unsub;
+  }, [pendingItems]);
+
+  // When video_error arrives for a pending item, remove it
+  useEffect(() => {
+    if (pendingItems.length === 0) return;
+    const unsub = subscribe((msg) => {
+      if (msg.type === "video_error") {
+        // Remove any pending item with matching URL
+        setPendingItems((prev) => prev.filter((p) => p.url !== msg.url));
+        notifService.push(`Video error: ${msg.message}`);
+      }
+    });
+    return unsub;
+  }, [pendingItems]);
+
+  // ─── Video error listener ──────────────────────────────────────────────────
   useEffect(() => {
     const video = videoRef.current;
     if (!video) return;
@@ -66,30 +214,32 @@ export function useMediaPlayer() {
 
   const currentItem = queue[playback.currentIndex] || null;
 
-  // Sync video source only when URL changes
+  // ─── Sync video SOURCE (never restarts on volume/seek) ────────────────────
   useEffect(() => {
     const video = videoRef.current;
     if (!video) return;
-
     const newUrl = currentItem?.url
       ? `/stream?url=${encodeURIComponent(currentItem.url)}`
       : "";
-
-    if (newUrl && newUrl !== lastUrlRef.current) {
-      video.setAttribute("src", newUrl);
+    if (newUrl !== lastUrlRef.current) {
+      if (newUrl) {
+        video.setAttribute("src", newUrl);
+      } else {
+        video.removeAttribute("src");
+      }
       lastUrlRef.current = newUrl;
-    } else if (!newUrl && lastUrlRef.current) {
-      video.removeAttribute("src");
-      lastUrlRef.current = "";
     }
+  }, [currentItem?.url]);
 
-    // Always keep the muted attribute in sync with playback state.
-    // Note: `muted` attribute is set initially via the JSX, but we override here.
+  // ─── Sync volume / mute ───────────────────────────────────────────────────
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
     video.muted = playback.muted;
     video.volume = playback.muted ? 0 : playback.volume / 100;
-  }, [currentItem?.url, playback.muted, playback.volume]);
+  }, [playback.muted, playback.volume]);
 
-  // Play/pause
+  // ─── Play / pause ──────────────────────────────────────────────────────────
   useEffect(() => {
     const video = videoRef.current;
     if (!video) return;
@@ -100,17 +250,25 @@ export function useMediaPlayer() {
     }
   }, [playback.isPlaying, currentItem]);
 
-  // Seek to position when backend sends seek
+  // ─── FIX 1: Seek sync — suppressed after local user actions ───────────────
+  // Previously: threshold was always 0.5 s, so any server echo after a volume
+  // change (which lags ~1 s behind) triggered an unwanted seek/restart.
+  // Now:
+  //   • While playing  → only snap for large jumps (>5 s): another client seeked.
+  //   • While paused   → sync normally so position is accurate on resume.
+  //   • suppressSyncUntil → 2 s grace window after local seek/volume actions.
   useEffect(() => {
     const video = videoRef.current;
     if (!video || !currentItem) return;
+    if (Date.now() < suppressSyncUntil.current) return;
     const diff = Math.abs(video.currentTime - playback.position);
-    if (diff > 0.5) {
+    const threshold = playback.isPlaying ? 5 : 0.5;
+    if (diff > threshold) {
       video.currentTime = playback.position;
     }
-  }, [playback.position, currentItem]);
+  }, [playback.position, currentItem, playback.isPlaying]);
 
-  // Report current time back to backend
+  // ─── Report current time to backend ───────────────────────────────────────
   useEffect(() => {
     if (!playback.isPlaying) return;
     const interval = setInterval(() => {
@@ -126,7 +284,14 @@ export function useMediaPlayer() {
     return () => clearInterval(interval);
   }, [playback.isPlaying]);
 
-  // Control functions
+  // ─── Auto-advance when queue is ready but nothing is playing ──────────────
+  useEffect(() => {
+    if (queue.length > 0 && !currentItem) {
+      sendAction({ type: "media_next" });
+    }
+  }, [queue.length, currentItem]);
+
+  // ─── Controls ─────────────────────────────────────────────────────────────
   const handlePlayPause = useCallback(() => {
     sendAction({ type: "media_playpause" });
   }, []);
@@ -139,15 +304,21 @@ export function useMediaPlayer() {
     sendAction({ type: "media_prev" });
   }, []);
 
+  // FIX 1: set suppressSyncUntil so the echo-back doesn't cause a seek
   const handleSeek = useCallback((value: number) => {
+    suppressSyncUntil.current = Date.now() + 2000;
     sendAction({ type: "media_seek", payload: { progress: value } });
   }, []);
 
+  // FIX 1: volume changes echo back the full state including position —
+  // suppress position sync for 2 s to avoid restarting / jumping the video
   const handleVolumeChange = useCallback((value: number) => {
+    suppressSyncUntil.current = Date.now() + 2000;
     sendAction({ type: "media_volume", payload: { volume: value } });
   }, []);
 
   const toggleMute = useCallback(() => {
+    suppressSyncUntil.current = Date.now() + 2000;
     sendAction({ type: "media_mute" });
   }, []);
 
@@ -156,7 +327,27 @@ export function useMediaPlayer() {
   }, []);
 
   const handleQueueAdd = useCallback((url: string, requestedBy: string) => {
-    sendAction({ type: "queue_add", payload: { url, requestedBy } });
+    const pendingId = Math.random().toString(36).slice(2);
+    const newItem: PendingItem = {
+      id: pendingId,
+      url,
+      requestedBy,
+      createdAt: Date.now(),
+      retries: 0,
+      sending: true,
+    };
+    setPendingItems((prev) => [...prev, newItem]);
+    // send initial request (we'll handle the callback)
+    sendAction(
+      { type: "queue_add", payload: { url, requestedBy, pendingId } },
+      (ack: any) => {
+        // If the backend replied with ok: false, we treat as error
+        if (ack && ack.ok === false) {
+          setPendingItems((prev) => prev.filter((p) => p.id !== pendingId));
+          notifService.push(`Failed to add: ${url}`);
+        }
+      },
+    );
   }, []);
 
   const handleQueueRemove = useCallback((index: number) => {
@@ -178,6 +369,7 @@ export function useMediaPlayer() {
 
   return {
     queue,
+    pendingItems,
     playback,
     currentItem,
     videoRef,

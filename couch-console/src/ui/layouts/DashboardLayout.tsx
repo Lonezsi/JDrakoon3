@@ -7,9 +7,6 @@ interface DashboardLayoutProps {
   clock: Date;
   players: Player[];
   activeIndex: number;
-  onLeft: () => void;
-  onRight: () => void;
-  onConfirm: () => void;
   setActiveIndex: React.Dispatch<React.SetStateAction<number>>;
 }
 
@@ -18,9 +15,6 @@ export function DashboardLayout({
   players,
   activeIndex,
   setActiveIndex,
-  onLeft,
-  onRight,
-  onConfirm,
 }: DashboardLayoutProps) {
   return (
     <div className="relative z-10 h-full w-full flex flex-col p-10">

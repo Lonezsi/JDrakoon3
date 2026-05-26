@@ -33,7 +33,7 @@ export function connect(
       ":" +
       backendPort;
 
-  if (socket?.connected) return socket;
+  if (socket) return socket;
 
   socket = io(wsUrl, {
     auth: { token: opts.token },
@@ -63,8 +63,9 @@ export function connect(
     "player_left",
     "action",
     "input:ownership_updated",
-    "action",
     "input:event",
+    "queue_add_failed",
+    "video_error",
   ];
   events.forEach((event) => {
     socket!.on(event, (payload: any) => notify({ type: event, ...payload }));
@@ -86,10 +87,14 @@ export function subscribe(handler: MessageHandler) {
   };
 }
 
-export function sendAction(action: { type: string; payload?: any }) {
+export function sendAction(
+  action: { type: string; payload?: any },
+  cb?: (response: any) => void,
+) {
   if (!socket?.connected) {
     console.warn("Socket not connected");
+    cb?.({ ok: false, error: "not_connected" });
     return;
   }
-  socket.emit(action.type, action.payload);
+  socket.emit(action.type, action.payload, cb);
 }

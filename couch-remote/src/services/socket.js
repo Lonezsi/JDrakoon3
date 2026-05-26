@@ -17,6 +17,37 @@ export function connect(url, opts = {}) {
       ":" +
       backendPort;
 
+  // If we've already created a socket, reuse it instead of creating a new
+  // connection on every call (connect() can be invoked from many hooks).
+  if (socket) {
+    // If caller asked to join and we're already connected, emit join.
+    if (opts.name && socket.connected) {
+      socket.emit(
+        "join",
+        { name: opts.name, color: opts.color, deviceType: "phone" },
+        (res) => {
+          if (res && res.ok) notify({ type: "joined", playerId: res.playerId });
+        },
+      );
+    }
+
+    return {
+      subscribe(fn) {
+        listeners.push(fn);
+        return () => {
+          listeners = listeners.filter((l) => l !== fn);
+        };
+      },
+      sendAction(action) {
+        setTransport && setTransport(action);
+      },
+      disconnect() {
+        socket && socket.disconnect();
+        socket = null;
+      },
+    };
+  }
+
   // Allow engine.io polling fallback (don't force websocket) to avoid "Invalid frame header" errors
   socket = io(wsUrl, { auth: { token: opts.token } });
 
@@ -40,6 +71,8 @@ export function connect(url, opts = {}) {
     "player_left",
     "action",
     "input:ownership_updated",
+    "queue_add_failed",
+    "video_error",
   ];
   forwardEvents.forEach((e) =>
     socket.on(e, (payload) => notify({ type: e, ...payload })),

@@ -310,9 +310,6 @@ export default function App() {
           clock={clock}
           players={allPlayers}
           activeIndex={activeIndex}
-          onLeft={navigateLeft}
-          onRight={navigateRight}
-          onConfirm={confirm}
           setActiveIndex={setActiveIndex}
         />
       </div>
@@ -325,6 +322,12 @@ export default function App() {
           to   { transform: translateX(0);    opacity: 1; }
         }
         .notif { animation: notif-in 0.38s cubic-bezier(.19,1,.22,1) forwards; }
+      
+        @keyframes card-in {
+          from { opacity: 0; transform: scale(0.96) translateY(4px); }
+          to   { opacity: 1; transform: scale(1)    translateY(0);   }
+        } 
+        .queue-card { animation: card-in 0.22s ease forwards; }
       `}</style>
     </div>
   );

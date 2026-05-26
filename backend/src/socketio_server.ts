@@ -77,6 +77,23 @@ export function initSocketIO(server: HttpServer) {
       return;
     }
 
+    // Track optimistic pending IDs created by this socket so we can forward
+    // add-failure events only to the originating client.
+    const pendingIds = new Set<string>();
+    const unsubQueueError = videoQueue.onError((pendingId, url, message) => {
+      try {
+        if (pendingIds.has(pendingId)) {
+          socket.emit("queue_add_failed", { pendingId, url, message });
+          pendingIds.delete(pendingId);
+        }
+      } catch (err) {
+        logger.warn(
+          "Failed to forward queue_add_failed to socket client:",
+          err,
+        );
+      }
+    });
+
     socket.on("join", (payload: any, cb?: Function) => {
       if (!rateLimiter(socket))
         return cb?.({ ok: false, error: "rate_limited" });
@@ -107,6 +124,10 @@ export function initSocketIO(server: HttpServer) {
       socket.join("lobby");
       const seq = syncService.recordEvent("player_joined", player);
       io.to("lobby").emit("player_joined", { ...player, seq });
+      // FIX: send current queue state immediately so this client doesn't
+      // see an empty queue until the next mutation.
+      socket.emit("queue_updated", videoQueue.getState());
+
       cb?.({ ok: true, playerId });
     });
     //
@@ -136,19 +157,40 @@ export function initSocketIO(server: HttpServer) {
     // Helper: extract URL from either a plain string or an object payload
     function extractUrl(payload: any): string | undefined {
       if (!payload) return undefined;
-      if (typeof payload === "string") return payload;
+
+      const cleanUrl = (url: string) => {
+        const parsed = new URL(url);
+
+        parsed.searchParams.delete("list");
+        parsed.searchParams.delete("index");
+        parsed.searchParams.delete("radio");
+        parsed.searchParams.delete("sid");
+
+        return parsed.toString();
+      };
+
+      if (typeof payload === "string") {
+        return cleanUrl(payload);
+      }
+
       if (typeof payload === "object") {
-        if (typeof payload.url === "string") return payload.url;
+        if (typeof payload.url === "string") {
+          return cleanUrl(payload.url);
+        }
+
         // fallback: find any string that looks like an http(s) URL
         for (const k of Object.keys(payload)) {
           const v = payload[k];
+
           if (
             typeof v === "string" &&
             (v.startsWith("http://") || v.startsWith("https://"))
-          )
-            return v;
+          ) {
+            return cleanUrl(v);
+          }
         }
       }
+
       return undefined;
     }
 
@@ -166,13 +208,23 @@ export function initSocketIO(server: HttpServer) {
         socket.data.playerId ||
         "Phone";
 
-      const item = await videoQueue.addToQueue(url, requestedBy);
+      const pendingId =
+        typeof payload === "object" && typeof payload.pendingId === "string"
+          ? payload.pendingId
+          : undefined;
+
+      if (pendingId) pendingIds.add(pendingId);
+
+      // Pass the caller-supplied pendingId through so clients can match
+      // optimistic pending entries with server-side notifications.
+      const item = await videoQueue.addToQueue(url, requestedBy, pendingId);
       if (item) {
-        const state = videoQueue.getState();
-        const seq = syncService.recordSnapshot("queue_updated", state);
-        io.to("lobby").emit("queue_updated", { ...state, seq });
+        cb?.({ ok: true });
+      } else {
+        // The VideoQueueService will call error subscribers which forwards
+        // `queue_add_failed` to the originating socket when appropriate.
+        cb?.({ ok: false, error: "extraction_failed" });
       }
-      cb?.({ ok: !!item });
     });
 
     socket.on("queue_remove", (payload: any, cb?: Function) => {
@@ -182,9 +234,6 @@ export function initSocketIO(server: HttpServer) {
       if (typeof index !== "number")
         return cb?.({ ok: false, error: "invalid_payload" });
       videoQueue.removeFromQueue(index);
-      const state = videoQueue.getState();
-      const seq = syncService.recordSnapshot("queue_updated", state);
-      io.to("lobby").emit("queue_updated", { ...state, seq });
       cb?.({ ok: true });
     });
 
@@ -199,9 +248,6 @@ export function initSocketIO(server: HttpServer) {
       )
         return cb?.({ ok: false, error: "invalid_payload" });
       videoQueue.moveItem(index, direction);
-      const state = videoQueue.getState();
-      const seq = syncService.recordSnapshot("queue_updated", state);
-      io.to("lobby").emit("queue_updated", { ...state, seq });
       cb?.({ ok: true });
     });
 
@@ -209,9 +255,6 @@ export function initSocketIO(server: HttpServer) {
       if (!rateLimiter(socket))
         return cb?.({ ok: false, error: "rate_limited" });
       videoQueue.clearQueue();
-      const state = videoQueue.getState();
-      const seq = syncService.recordSnapshot("queue_updated", state);
-      io.to("lobby").emit("queue_updated", { ...state, seq });
       cb?.({ ok: true });
     });
 
@@ -219,9 +262,6 @@ export function initSocketIO(server: HttpServer) {
       if (!rateLimiter(socket))
         return cb?.({ ok: false, error: "rate_limited" });
       videoQueue.shuffle();
-      const state = videoQueue.getState();
-      const seq = syncService.recordSnapshot("queue_updated", state);
-      io.to("lobby").emit("queue_updated", { ...state, seq });
       cb?.({ ok: true });
     });
 
@@ -229,34 +269,22 @@ export function initSocketIO(server: HttpServer) {
       if (!rateLimiter(socket))
         return cb?.({ ok: false, error: "rate_limited" });
       videoQueue.toggleLoop();
-      const state = videoQueue.getState();
-      const seq = syncService.recordSnapshot("queue_updated", state);
-      io.to("lobby").emit("queue_updated", { ...state, seq });
       cb?.({ ok: true });
     });
 
     socket.on("media_playpause", () => {
       if (!rateLimiter(socket)) return;
       videoQueue.setPlaying(!videoQueue.getState().playback.isPlaying);
-      const state = videoQueue.getState();
-      const seq = syncService.recordSnapshot("queue_updated", state);
-      io.to("lobby").emit("queue_updated", { ...state, seq });
     });
 
     socket.on("media_next", () => {
       if (!rateLimiter(socket)) return;
       videoQueue.next();
-      const state = videoQueue.getState();
-      const seq = syncService.recordSnapshot("queue_updated", state);
-      io.to("lobby").emit("queue_updated", { ...state, seq });
     });
 
     socket.on("media_prev", () => {
       if (!rateLimiter(socket)) return;
       videoQueue.previous();
-      const state = videoQueue.getState();
-      const seq = syncService.recordSnapshot("queue_updated", state);
-      io.to("lobby").emit("queue_updated", { ...state, seq });
     });
 
     socket.on("media_seek", (payload: any, cb?: Function) => {
@@ -267,9 +295,6 @@ export function initSocketIO(server: HttpServer) {
       const secs = typeof progress === "number" ? progress : Number(progress);
       if (isNaN(secs)) return cb?.({ ok: false, error: "invalid_payload" });
       videoQueue.setPosition(secs);
-      const state = videoQueue.getState();
-      const seq = syncService.recordSnapshot("queue_updated", state);
-      io.to("lobby").emit("queue_updated", { ...state, seq });
       cb?.({ ok: true });
     });
 
@@ -281,9 +306,6 @@ export function initSocketIO(server: HttpServer) {
       const num = typeof vol === "number" ? vol : Number(vol);
       if (isNaN(num)) return cb?.({ ok: false, error: "invalid_payload" });
       videoQueue.setVolume(num);
-      const state = videoQueue.getState();
-      const seq = syncService.recordSnapshot("queue_updated", state);
-      io.to("lobby").emit("queue_updated", { ...state, seq });
       cb?.({ ok: true });
     });
 
@@ -291,9 +313,6 @@ export function initSocketIO(server: HttpServer) {
       if (!rateLimiter(socket))
         return cb?.({ ok: false, error: "rate_limited" });
       videoQueue.toggleMute();
-      const state = videoQueue.getState();
-      const seq = syncService.recordSnapshot("queue_updated", state);
-      io.to("lobby").emit("queue_updated", { ...state, seq });
       cb?.({ ok: true });
     });
 
@@ -392,6 +411,11 @@ export function initSocketIO(server: HttpServer) {
 
     socket.on("disconnect", () => {
       const pid = socket.data.playerId as string | undefined;
+      try {
+        unsubQueueError && unsubQueueError();
+      } catch (err) {
+        logger.warn("Error unsubscribing socket queue error handler:", err);
+      }
       if (pid) {
         lobbySync.removePlayer(pid);
         io.to("lobby").emit("player_left", { playerId: pid });
@@ -405,8 +429,8 @@ export function initSocketIO(server: HttpServer) {
     io.to("lobby").emit("lobby_state", { ...payload, seq });
   });
 
-  videoQueue.subscribe((queue, playback) => {
-    const payload = { queue, playback };
+  videoQueue.subscribe((queue, playback, pendingItems) => {
+    const payload = { queue, playback, pendingItems };
     const seq = syncService.recordSnapshot("queue_updated", payload);
     io.to("lobby").emit("queue_updated", { ...payload, seq });
   });
