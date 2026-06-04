@@ -58,6 +58,10 @@ export class LobbyScene {
 
   // Desired horizontal velocities (set by input)
   private playerInputs = new Map<string, { x: number; z: number }>();
+  // Track whether we've already applied the instant stop for a player
+  // so we don't keep overriding horizontal velocity and can let
+  // gravity / contacts later change it (allowing the cube to roll).
+  private inputStopped = new Map<string, boolean>();
 
   // Callback to push Rapier state back to React
   public onUpdate?: (players: Player[]) => void;
@@ -165,22 +169,49 @@ export class LobbyScene {
     this.players.forEach((state) => {
       const vel = state.body.linvel();
       const input = this.playerInputs.get(state.playerData.id);
+      const id = state.playerData.id;
 
-      // Direct velocity assignment – instant start/stop
-      state.body.setLinvel(
-        {
-          x: input ? input.x : 0,
-          y: vel.y, // never touch vertical – Rapier owns gravity
-          z: input ? input.z : 0,
-        },
-        true,
-      );
+      // Determine target horizontal velocity.
+      // Behavior:
+      // - If there is a non-zero input, immediately set that velocity.
+      // - If input is exactly zero, perform a one-shot instant stop
+      //   (so the cube appears to stop), but only on the first frame
+      //   of the stop. Subsequent frames will not overwrite horizontal
+      //   velocity so gravity/contacts can produce movement (roll).
+      let targetX = vel.x;
+      let targetZ = vel.z;
+
+      if (input && (input.x !== 0 || input.z !== 0)) {
+        targetX = input.x;
+        targetZ = input.z;
+        this.inputStopped.set(id, false);
+      } else {
+        const stopped = this.inputStopped.get(id) ?? false;
+        if (!stopped) {
+          // first frame with no move input — snap to zero horizontally
+          targetX = 0;
+          targetZ = 0;
+          this.inputStopped.set(id, true);
+        } else {
+          // already stopped — do not overwrite horizontal velocity;
+          // allow Rapier gravity / contacts to change it naturally
+          targetX = vel.x;
+          targetZ = vel.z;
+        }
+      }
 
       // Speed clamp
-      const hSpeed = Math.hypot(vel.x, vel.z);
+      const hSpeed = Math.hypot(targetX, targetZ);
       if (hSpeed > MAX_SPEED) {
         const s = MAX_SPEED / hSpeed;
-        state.body.setLinvel({ x: vel.x * s, y: vel.y, z: vel.z * s }, true);
+        targetX *= s;
+        targetZ *= s;
+      }
+
+      // Apply the velocity if it differs from current horizontal
+      // velocity, preserving vertical velocity (Rapier handles gravity).
+      if (targetX !== vel.x || targetZ !== vel.z) {
+        state.body.setLinvel({ x: targetX, y: vel.y, z: targetZ }, true);
       }
 
       state.prevVel.set(vel.x, vel.y, vel.z);
@@ -309,6 +340,7 @@ export class LobbyScene {
         (state.mesh.material as THREE.Material).dispose();
         this.players.delete(id);
         this.playerInputs.delete(id);
+        this.inputStopped.delete(id);
       }
     });
 
@@ -357,6 +389,7 @@ export class LobbyScene {
           playerData: { ...p }, // store original cosmetic data
           prevVel: new THREE.Vector3(),
         });
+        this.inputStopped.set(p.id, false);
       }
     });
   }

@@ -24,8 +24,6 @@ export default function App() {
     setUser({ name, color });
     const socket = connectSocket(null, { name, color });
 
-    // Wire the transport to the socket
-    // inside join()
     setTransport((action) => {
       if (!socket || socket.readyState !== WebSocket.OPEN) return;
 
