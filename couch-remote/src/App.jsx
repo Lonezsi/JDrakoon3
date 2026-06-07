@@ -1,6 +1,5 @@
 import { useState } from "react";
 import { connect as connectSocket } from "./services/socket";
-import { setTransport, Actions } from "./services/inputActions"; // your real module
 
 import LoginScreen from "./components/LoginScreen";
 import Header from "./components/Header";
@@ -22,35 +21,7 @@ export default function App() {
 
   const join = (name, color) => {
     setUser({ name, color });
-    const socket = connectSocket(null, { name, color });
-
-    setTransport((action) => {
-      if (!socket || socket.readyState !== WebSocket.OPEN) return;
-
-      let msg;
-      if (action.type === Actions.CUBE_MOVE) {
-        msg = {
-          type: "input:event",
-          payload: {
-            analog: { x: action.payload?.x ?? 0, y: action.payload?.y ?? 0 },
-            buttons: {},
-          },
-        };
-      } else if (action.type === Actions.JUMP) {
-        msg = {
-          type: "input:event",
-          payload: { analog: { x: 0, y: 0 }, buttons: { jump: true } },
-        };
-      } else if (action.type === Actions.EMOTE) {
-        msg = {
-          type: "action",
-          payload: { type: "emote", value: action.payload?.emote ?? "wave" },
-        };
-      } else {
-        msg = { type: "action", payload: action };
-      }
-      socket.send(JSON.stringify(msg));
-    });
+    connectSocket(null, { name, color });
     setScreen("MAIN");
   };
 

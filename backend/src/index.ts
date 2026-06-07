@@ -43,18 +43,65 @@ async function bootstrap() {
   // Dynamic QR code for phone pairing
   app.get("/qr-code", async (req, res) => {
     try {
-      let ip = req.hostname;
+      const PORT = 3001; // (or use your imported PORT constant)
+      let bestIP = req.hostname; // fallback
+
+      // 1. Collect all usable IPv4 addresses
       const nets = os.networkInterfaces();
-      for (const name of Object.keys(nets)) {
-        for (const net of nets[name]!) {
+      const candidates: { address: string; iface: string }[] = [];
+
+      for (const [name, details] of Object.entries(nets)) {
+        if (!details) continue;
+        for (const net of details) {
           if (net.family === "IPv4" && !net.internal) {
-            ip = net.address;
-            break;
+            candidates.push({ address: net.address, iface: name });
           }
         }
-        if (ip !== req.hostname) break;
       }
-      const phoneUrl = `http://${ip}:${PORT}/phone`;
+
+      // 2. Filter out known virtual interfaces
+      const virtualKeywords = [
+        "virtual",
+        "hyper-v",
+        "wsl",
+        "docker",
+        "vbox",
+        "vmware",
+        "vethernet",
+        "utun",
+        "lo",
+      ];
+      const physicalCandidates = candidates.filter(
+        (c) => !virtualKeywords.some((k) => c.iface.toLowerCase().includes(k)),
+      );
+
+      // 3. Prefer Wi‑Fi / Ethernet over other (e.g. Bluetooth PAN)
+      const preferredKeywords = [
+        "wi-fi",
+        "wlan",
+        "ethernet",
+        "eth",
+        "en0",
+        "en",
+      ];
+      const preferred = physicalCandidates.filter((c) =>
+        preferredKeywords.some((k) => c.iface.toLowerCase().includes(k)),
+      );
+
+      if (preferred.length > 0) {
+        bestIP = preferred[0].address;
+      } else if (physicalCandidates.length > 0) {
+        bestIP = physicalCandidates[0].address;
+      } else if (candidates.length > 0) {
+        // fallback to any non-internal IP (including virtual)
+        bestIP = candidates[0].address;
+      }
+
+      logger.info(
+        `QR code using IP: ${bestIP} (interface: ${preferred[0]?.iface || physicalCandidates[0]?.iface || candidates[0]?.iface})`,
+      );
+
+      const phoneUrl = `http://${bestIP}:${PORT}/phone`;
       const svg = await qrcode.toString(phoneUrl, {
         type: "svg",
         errorCorrectionLevel: "M",
@@ -123,11 +170,9 @@ async function bootstrap() {
     try {
       logger.debug("Detecting WiFi SSID for platform:", process.platform);
       if (process.platform === "win32") {
-        const output = execSync("netsh wlan show interfaces", {
-          encoding: "utf8",
-        });
-        const match = output.match(/^\s*SSID\s*:\s*(.+)\s*$/m);
-        return match ? match[1].trim() : "Unknown WiFi";
+        const cmd = `powershell -NoProfile -Command "(Get-NetConnectionProfile | Where-Object { $_.InterfaceAlias -like 'Wi-Fi*' }).Name"`;
+        const output = execSync(cmd, { encoding: "utf8" }).trim();
+        return output || "Unknown WiFi";
       } else if (process.platform === "darwin") {
         const output = execSync(
           "/System/Library/PrivateFrameworks/Apple80211.framework/Versions/Current/Resources/airport -I",

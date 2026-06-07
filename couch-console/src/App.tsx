@@ -2,7 +2,7 @@ import { useEffect, useState, useMemo, useRef, useCallback } from "react";
 import { appState } from "./core/stateMachine";
 import { events } from "./core/events";
 import { launchApp } from "./services/launcherService";
-import { connect, subscribe } from "./services/socket";
+import { connect, getSocket, subscribe } from "./services/socket";
 import { useLobbyRenderer } from "./hooks/useLobbyRenderer";
 import { useGameLoop, emitChange } from "./hooks/useGameLoop";
 import { useClock } from "./hooks/useClock";
@@ -83,6 +83,16 @@ export default function App() {
     setActiveIndex,
     library.length,
   );
+
+  const [keyboardPlayers, setKeyboardPlayers] = useState<
+    Record<string, string | null>
+  >({
+    wasd: null, // playerId once joined
+    uhjk: null,
+  });
+
+  const gamepadPlayersRef = useRef<Record<number, string | null>>({});
+  const socket = getSocket();
 
   // Boot → HOME
   useEffect(() => {
