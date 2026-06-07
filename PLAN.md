@@ -58,9 +58,9 @@ Follow each step sequentially, marking the checkbox `[x]` after verifying the st
 
 **Testing:**
 
-- [ ] Start TV and test client.
-- [ ] Move with WASD → cube moves on TV and test client output.
-- [ ] Gamepad movement also works.
+- [x] Start TV and test client.
+- [x] Move with WASD → cube moves on TV and test client output.
+- [x] Gamepad movement also works.
 
 ---
 
@@ -78,9 +78,9 @@ Follow each step sequentially, marking the checkbox `[x]` after verifying the st
 
 **Testing:**
 
-- [ ] Open TV and phone (or `pair.html`).
-- [ ] On phone Remote tab, press D‑pad arrows → TV dashboard selection moves.
-- [ ] Use `pair.html` "Claim Menu" button and verify ownership in log.
+- [x] Open TV and phone (or `pair.html`).
+- [x] On phone Remote tab, press D‑pad arrows → TV dashboard selection moves.
+- [x] Use `pair.html` "Claim Menu" button and verify ownership in log.
 
 ---
 
