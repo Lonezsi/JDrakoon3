@@ -62,6 +62,17 @@ export function initSocketIO(server: HttpServer) {
     transports: ["polling", "websocket"],
     perMessageDeflate: false,
   });
+
+  // inside initSocketIO, after io is created:
+  process.on("uncaughtException", (err) => {
+    io.to("lobby").emit("error", { message: err.message });
+  });
+  process.on("unhandledRejection", (reason: any) => {
+    io.to("lobby").emit("error", {
+      message: reason?.message || String(reason),
+    });
+  });
+
   const rateLimiter = makeRateLimiter(30, 60);
 
   io.on("connection", (socket) => {

@@ -15,6 +15,7 @@ import { Notifications } from "./ui/components/Notifications";
 import { PhoneQR } from "./ui/components/PhoneQR";
 import { MOCK_APPS as library } from "./shared/constants";
 import type { AppState, Player } from "./shared/types";
+import { notifService } from "./services/notificationService";
 
 // ---------------------------------------------------------------
 // Global debounce hook – one single cooldown for all navigation
@@ -287,6 +288,10 @@ export default function App() {
               value: { x: moveMsg.dx, y: moveMsg.dy },
             },
           ]);
+          break;
+        }
+        case "error": {
+          notifService.push(`Backend error: ${msg.message}`);
           break;
         }
         default:
