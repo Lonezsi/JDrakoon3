@@ -15,7 +15,15 @@ export function TopBar({ clock, players }: TopBarProps) {
     minute: "2-digit",
   });
 
-  const appVersion = (globalThis as any).__APP_VERSION__ || "0.0.0";
+  const [appVersion, setAppVersion] = useState("0.0.0");
+
+  useEffect(() => {
+    fetch("/api/version")
+      .then((res) => res.json())
+      .then((data) => setAppVersion(data.version))
+      .catch(() => setAppVersion("0.0.0"));
+  }, []);
+
   const envName = (globalThis as any).process?.env?.NODE_ENV ?? "development";
 
   const [wifiName, setWifiName] = useState("Loading...");

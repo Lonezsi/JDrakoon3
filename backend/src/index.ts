@@ -55,6 +55,17 @@ async function bootstrap() {
 
   // ── API routes (must come before proxies / static) ──────────
 
+  app.get("/api/version", (req, res) => {
+    try {
+      const version = fs
+        .readFileSync(path.join(process.cwd(), "../VERSION"), "utf-8")
+        .trim();
+      res.json({ version });
+    } catch {
+      res.json({ version: "0.0.0" });
+    }
+  });
+
   // Serve cached thumbnails and video files under /cache
   app.use("/cache", express.static(CACHE_DIR));
 
@@ -310,20 +321,31 @@ async function bootstrap() {
   app.post("/api/shutdown", async (req, res) => {
     res.json({ ok: true, message: "Shutting down..." });
 
-    // Kill the kiosk browser (Edge) so the window closes immediately
+    // Force‑close all TCP connections so Edge doesn't leave leftovers
+    try {
+      server.close(); // stop accepting new connections
+      // Destroy all current sockets
+      (server as any).getConnections((err: any, count: number) => {
+        if (!err) {
+          // This is a bit hacky – we iterate the internal sockets
+          const sockets = (server as any)._connections || {};
+          for (const key of Object.keys(sockets)) {
+            sockets[key].destroy();
+          }
+        }
+      });
+    } catch {}
+
+    // Kill Edge via PID file (if present)
     try {
       const pidFile = path.join(process.cwd(), ".edge_pid");
       if (fs.existsSync(pidFile)) {
         const pid = parseInt(fs.readFileSync(pidFile, "utf-8").trim());
-        if (pid) {
-          execSync(`taskkill /PID ${pid} /F /T`, { stdio: "ignore" });
-        }
+        if (pid) execSync(`taskkill /PID ${pid} /F /T`, { stdio: "ignore" });
       }
-    } catch (e) {
-      // ignore – process may already be gone
-    }
+    } catch {}
 
-    // Exit the backend process, which causes start.ps1 to finish
+    // Exit immediately (the script will clean up the process)
     process.exit(0);
   });
 
