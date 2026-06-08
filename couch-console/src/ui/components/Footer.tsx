@@ -91,6 +91,14 @@ export function Footer({ players }: FooterProps) {
   // Total item count for "Clear" visibility
   const totalQueueCount = media.queue.length + media.pendingItems.length;
 
+  const handleShutdown = () => {
+    notifService.push("Shutting down…");
+    // Tell the backend to exit (it will kill the kiosk window if running)
+    fetch("/api/shutdown", { method: "POST" }).catch(() => {});
+    // Force-close the window after a short delay
+    setTimeout(() => window.close(), 500);
+  };
+
   return (
     <div className="flex items-end gap-6 py-4">
       {/* Video element */}
@@ -426,7 +434,7 @@ export function Footer({ players }: FooterProps) {
           <Settings size={18} />
         </button>
         <button
-          onClick={() => alert("Quit functionality coming soon!")}
+          onClick={handleShutdown}
           className="p-3.5 bg-red-500/10 rounded-2xl border border-red-500/20 text-red-500 hover:bg-red-500/20 transition-colors hover:scale-105 cursor-pointer"
         >
           <LogOut size={18} />

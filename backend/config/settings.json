@@ -1,7 +1,7 @@
 {
   "display": {
     "fullscreen": true,
-    "crtEffect": false,
+    "crtEffect": true,
     "volume": 80
   },
   "media": {

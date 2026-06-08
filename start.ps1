@@ -34,7 +34,10 @@ Write-Host "Backend ready. Launching fullscreen dashboard..." -ForegroundColor G
 # Open Edge in kiosk mode (reliable fullscreen)
 $edge = Start-Process -FilePath "msedge" -ArgumentList "--kiosk http://localhost:3001 --edge-kiosk-type=fullscreen --no-first-run" -PassThru
 
+$edge.Id | Out-File -FilePath "$root\backend\.edge_pid" -Encoding ascii
+
 # Wait for browser to close, then kill backend
 $edge.WaitForExit()
+Remove-Item -Path "$root\backend\.edge_pid" -ErrorAction SilentlyContinue
 Write-Host "Dashboard closed. Shutting down backend..." -ForegroundColor Yellow
 Stop-Process $backend.Id -Force

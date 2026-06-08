@@ -38,6 +38,21 @@ async function bootstrap() {
 
   const isDev = process.env.NODE_ENV !== "production";
 
+  // Forward unhandled errors to all connected clients
+  process.on("uncaughtException", (err) => {
+    logger.error("Uncaught exception:", err);
+    try {
+      broadcast("error", { message: err.message });
+    } catch {}
+  });
+
+  process.on("unhandledRejection", (reason: any) => {
+    logger.error("Unhandled rejection:", reason);
+    try {
+      broadcast("error", { message: reason?.message || String(reason) });
+    } catch {}
+  });
+
   // ── API routes (must come before proxies / static) ──────────
 
   // Serve cached thumbnails and video files under /cache
@@ -289,6 +304,27 @@ async function bootstrap() {
   app.get("/api/network-info", (req, res) => {
     const ssid = getWifiSSID();
     res.json({ ssid });
+  });
+
+  // Graceful shutdown – called from TV dashboard
+  app.post("/api/shutdown", async (req, res) => {
+    res.json({ ok: true, message: "Shutting down..." });
+
+    // Kill the kiosk browser (Edge) so the window closes immediately
+    try {
+      const pidFile = path.join(process.cwd(), ".edge_pid");
+      if (fs.existsSync(pidFile)) {
+        const pid = parseInt(fs.readFileSync(pidFile, "utf-8").trim());
+        if (pid) {
+          execSync(`taskkill /PID ${pid} /F /T`, { stdio: "ignore" });
+        }
+      }
+    } catch (e) {
+      // ignore – process may already be gone
+    }
+
+    // Exit the backend process, which causes start.ps1 to finish
+    process.exit(0);
   });
 
   // ── Frontend serving ───────────────────────────────────────
