@@ -7,6 +7,9 @@ const pkg = JSON.parse(fs.readFileSync("./package.json", "utf-8"));
 
 export default defineConfig({
   base: "/phone/",
+  server: {
+    port: 5174,
+  },
   plugins: [react(), tailwindcss()],
   define: {
     __APP_VERSION__: JSON.stringify(pkg.version || "0.0.0"),

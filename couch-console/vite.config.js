@@ -11,6 +11,9 @@ export default defineConfig(({ mode }) => {
 
   return {
     plugins: [react(), tailwindcss()],
+    server: {
+      port: 5173,
+    },
     define: {
       __APP_VERSION__: JSON.stringify(pkg.version || "0.1.0"),
       __UPDATE_SECRET__: JSON.stringify(env.UPDATE_SECRET || ""),
