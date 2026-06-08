@@ -56,6 +56,12 @@ export class LobbyScene {
   private accumulator = 0;
   private container: HTMLElement | null = null;
 
+  private crtEnabled = true;
+
+  public setCrtEnabled(enabled: boolean) {
+    this.crtEnabled = enabled;
+  }
+
   // Desired horizontal velocities (set by input)
   private playerInputs = new Map<string, { x: number; z: number }>();
   // Track whether we've already applied the instant stop for a player
@@ -287,14 +293,19 @@ export class LobbyScene {
     });
 
     // CRT post‑process
-    this.postMat.uniforms.time.value = t;
-    this.renderer.setRenderTarget(this.rt);
-    this.renderer.render(this.scene, this.camera);
-    this.renderer.setRenderTarget(null);
-    this.renderer.render(
-      this.postScene,
-      new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1),
-    );
+    if (this.crtEnabled) {
+      this.postMat.uniforms.time.value = t;
+      this.renderer.setRenderTarget(this.rt);
+      this.renderer.render(this.scene, this.camera);
+      this.renderer.setRenderTarget(null);
+      this.renderer.render(
+        this.postScene,
+        new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1),
+      );
+    } else {
+      this.renderer.setRenderTarget(null);
+      this.renderer.render(this.scene, this.camera);
+    }
   };
 
   private spawnParticles(pos: THREE.Vector3, impact: number) {

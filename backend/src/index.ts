@@ -47,6 +47,27 @@ async function bootstrap() {
     res.json(settingsService.get());
   });
 
+  // Get default settings values
+  app.get("/api/settings/defaults", (req, res) => {
+    res.json(settingsService.getDefaults());
+  });
+
+  // Partial update settings
+  app.patch("/api/settings", express.json(), async (req, res) => {
+    try {
+      const partial = req.body;
+      if (typeof partial !== "object" || partial === null) {
+        return res.status(400).json({ ok: false, error: "invalid body" });
+      }
+      delete partial._descriptions; // don't let the client overwrite descriptions
+      await settingsService.update(partial);
+      res.json({ ok: true, settings: settingsService.get() });
+    } catch (err) {
+      logger.error("Failed to update settings:", err);
+      res.status(500).json({ ok: false, error: "update_failed" });
+    }
+  });
+
   // ── Auto‑update endpoint ──────────────────────────────────────────
   app.post("/api/update", express.json(), async (req, res) => {
     const { key } = req.body || {};

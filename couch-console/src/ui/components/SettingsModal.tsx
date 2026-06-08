@@ -1,0 +1,487 @@
+import { useState, useEffect } from "react";
+import { RotateCcw, X } from "lucide-react";
+import React from "react";
+
+// ---------- helpers ----------
+
+function flattenObject(obj: any, prefix = ""): Record<string, any> {
+  const result: Record<string, any> = {};
+  for (const key of Object.keys(obj)) {
+    const value = obj[key];
+    const path = prefix ? `${prefix}.${key}` : key;
+    if (value && typeof value === "object" && !Array.isArray(value)) {
+      Object.assign(result, flattenObject(value, path));
+    } else {
+      result[path] = value;
+    }
+  }
+  return result;
+}
+
+function unflattenValue(path: string, value: any): any {
+  const parts = path.split(".");
+  const result: any = {};
+  let current = result;
+  for (let i = 0; i < parts.length - 1; i++) {
+    current[parts[i]] = {};
+    current = current[parts[i]];
+  }
+  current[parts[parts.length - 1]] = value;
+  return result;
+}
+
+function FieldLabel({
+  path,
+  description,
+}: {
+  path: string;
+  description?: string;
+}) {
+  const leaf = (path.split(".").pop() || path)
+    .replace(/([A-Z])/g, " $1")
+    .replace(/_/g, " ")
+    .trim();
+
+  return (
+    <div className="min-w-0">
+      <span className="text-[11px] font-black uppercase tracking-widest text-white/70 leading-none">
+        {leaf}
+      </span>
+      {description && (
+        <p className="text-[10px] text-gray-600 mt-0.5 leading-tight">
+          {description}
+        </p>
+      )}
+    </div>
+  );
+}
+
+// ---------- component ----------
+
+export const SettingsModal = React.memo(function SettingsModal({
+  onClose,
+}: {
+  onClose: () => void;
+}) {
+  const [settings, setSettings] = useState<Record<string, any> | null>(null);
+  const [defaults, setDefaults] = useState<Record<string, any> | null>(null);
+  const [descriptions, setDescriptions] = useState<Record<string, string>>({});
+  const [search, setSearch] = useState("");
+
+  useEffect(() => {
+    fetch("/api/settings")
+      .then((res) => res.json())
+      .then((data) => {
+        setSettings(data);
+        setDescriptions(data._descriptions || {});
+      });
+    fetch("/api/settings/defaults")
+      .then((res) => res.json())
+      .then((data) => setDefaults(data));
+  }, []);
+
+  if (!settings || !defaults) return null;
+
+  const cleanSettings = { ...settings };
+  delete cleanSettings._descriptions;
+  delete cleanSettings.players;
+  const flatCurrent = flattenObject(cleanSettings);
+  const flatDefaults = flattenObject(defaults);
+
+  const allPaths = Object.keys(flatDefaults).filter(
+    (path) => !path.startsWith("players"),
+  );
+
+  const filteredPaths = allPaths.filter(
+    (path) =>
+      flatCurrent[path] !== undefined &&
+      (path.toLowerCase().includes(search.toLowerCase()) ||
+        (descriptions[path] || "")
+          .toLowerCase()
+          .includes(search.toLowerCase())),
+  );
+
+  const grouped: Record<string, string[]> = {};
+  for (const path of filteredPaths) {
+    const group = path.split(".")[0];
+    if (!grouped[group]) grouped[group] = [];
+    grouped[group].push(path);
+  }
+
+  const isValueEqual = (a: any, b: any) => {
+    if (Array.isArray(a) && Array.isArray(b)) {
+      return JSON.stringify(a) === JSON.stringify(b);
+    }
+    return a === b;
+  };
+
+  const modifiedCount = allPaths.filter(
+    (p) => !isValueEqual(flatCurrent[p], flatDefaults[p]),
+  ).length;
+
+  // ---------- update / reset ----------
+
+  const updateField = (path: string, value: any) => {
+    const parts = path.split(".");
+    const newSettings = JSON.parse(JSON.stringify(settings));
+    let current = newSettings;
+    for (let i = 0; i < parts.length - 1; i++) current = current[parts[i]];
+    current[parts[parts.length - 1]] = value;
+    setSettings(newSettings);
+
+    fetch("/api/settings", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(unflattenValue(path, value)),
+    });
+  };
+
+  const resetField = (path: string) => updateField(path, flatDefaults[path]);
+
+  const resetAll = () => {
+    const payload: any = {};
+    for (const path of allPaths) {
+      if (!isValueEqual(flatCurrent[path], flatDefaults[path])) {
+        const parts = path.split(".");
+        let cur = payload;
+        for (let i = 0; i < parts.length - 1; i++) {
+          if (!cur[parts[i]]) cur[parts[i]] = {};
+          cur = cur[parts[i]];
+        }
+        cur[parts[parts.length - 1]] = flatDefaults[path];
+      }
+    }
+    fetch("/api/settings", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    }).then(() =>
+      fetch("/api/settings")
+        .then((r) => r.json())
+        .then((data) => setSettings(data)),
+    );
+  };
+
+  // ---------- render helpers ----------
+
+  const ResetBtn = ({ path }: { path: string }) => (
+    <button
+      onClick={() => resetField(path)}
+      title="Reset to default"
+      className="flex-shrink-0 text-yellow-400/50 hover:text-yellow-400 transition-colors p-2 -m-1"
+    >
+      <RotateCcw size={11} />
+    </button>
+  );
+
+  // ---------- Slider with debounced commit ----------
+  const SliderField = ({
+    path,
+    value,
+    max,
+    step,
+    isDefault,
+  }: {
+    path: string;
+    value: number;
+    max: number;
+    step: number;
+    isDefault: boolean;
+  }) => {
+    const [localVal, setLocalVal] = useState<number | null>(null);
+    const displayVal = localVal !== null ? localVal : value;
+
+    const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+      setLocalVal(parseFloat(e.target.value));
+    };
+
+    const handleCommit = () => {
+      if (localVal !== null) {
+        updateField(path, localVal);
+        setLocalVal(null);
+      }
+    };
+
+    const pct = Math.min(100, (displayVal / max) * 100);
+    const accent = isDefault ? "bg-indigo-500" : "bg-yellow-400";
+    const thumbBorder = isDefault
+      ? "border-indigo-400/60 shadow-indigo-500/20"
+      : "border-yellow-400/60 shadow-yellow-400/20";
+
+    return (
+      <div className="flex items-center gap-3">
+        <div className="relative flex-1 py-2">
+          <div className="relative h-1 bg-white/10 rounded-full">
+            <div
+              className={`absolute inset-y-0 left-0 rounded-full ${accent} transition-all`}
+              style={{ width: `${pct}%` }}
+            />
+            <div
+              className={`absolute top-1/2 -translate-y-1/2 -translate-x-1/2 w-3.5 h-3.5 rounded-full bg-white border-2 shadow-lg cursor-pointer ${thumbBorder}`}
+              style={{ left: `${pct}%` }}
+            />
+          </div>
+          <input
+            type="range"
+            min={0}
+            max={max}
+            step={step}
+            value={displayVal}
+            onChange={handleChange}
+            onMouseUp={handleCommit}
+            onTouchEnd={handleCommit}
+            className="absolute inset-0 w-full opacity-0 cursor-pointer"
+          />
+        </div>
+        <span className="text-xs font-black w-10 text-right tabular-nums text-gray-500">
+          {Number.isInteger(displayVal) ? displayVal : displayVal.toFixed(2)}
+        </span>
+        {!isDefault && <ResetBtn path={path} />}
+      </div>
+    );
+  };
+
+  // ---------- Editable array for library folders ----------
+  const EditableArrayInput = ({
+    value,
+    path,
+    isDefault,
+  }: {
+    value: string[];
+    path: string;
+    isDefault: boolean;
+  }) => {
+    const [text, setText] = useState(value.join("\n"));
+
+    const handleBlur = () => {
+      const folders = text
+        .split("\n")
+        .map((s) => s.trim())
+        .filter(Boolean);
+      updateField(path, folders);
+    };
+
+    return (
+      <div className="flex flex-col gap-2">
+        <textarea
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          onBlur={handleBlur}
+          rows={4}
+          className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-xs font-mono text-white outline-none resize-y"
+          placeholder="One folder path per line"
+        />
+        {!isDefault && <ResetBtn path={path} />}
+      </div>
+    );
+  };
+
+  const renderToggle = (path: string, value: boolean, isDefault: boolean) => (
+    <div className="flex items-center gap-2">
+      <button
+        onClick={() => updateField(path, !value)}
+        className={`relative w-10 h-5 rounded-full transition-all duration-300 ${
+          value ? "bg-indigo-500" : "bg-white/10"
+        } ${!isDefault ? "ring-1 ring-yellow-400/40" : ""}`}
+      >
+        <span
+          className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow-lg transition-all duration-300 ${
+            value ? "left-5" : "left-0.5"
+          }`}
+        />
+      </button>
+      {!isDefault && <ResetBtn path={path} />}
+    </div>
+  );
+
+  const renderInput = (path: string, currentValue: any, defaultValue: any) => {
+    const isDefault = isValueEqual(currentValue, defaultValue);
+    if (typeof currentValue === "boolean")
+      return renderToggle(path, currentValue, isDefault);
+    if (typeof currentValue === "number") {
+      const isVolume = path.toLowerCase().includes("volume");
+      const isDeadzone = path.toLowerCase().includes("deadzone");
+      const max = isVolume ? 100 : isDeadzone ? 1 : 1000;
+      const step = isVolume ? 1 : 0.01;
+      return (
+        <SliderField
+          path={path}
+          value={currentValue}
+          max={max}
+          step={step}
+          isDefault={isDefault}
+        />
+      );
+    }
+    if (Array.isArray(currentValue)) {
+      return (
+        <EditableArrayInput
+          value={currentValue}
+          path={path}
+          isDefault={isDefault}
+        />
+      );
+    }
+    return (
+      <div className="flex items-center gap-2">
+        <span className="text-xs font-mono text-gray-500 break-all">
+          {String(currentValue)}
+        </span>
+        {!isDefault && <ResetBtn path={path} />}
+      </div>
+    );
+  };
+
+  // ---------- UI ----------
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      style={{
+        background: "#00000072",
+        backdropFilter: "blur(10px)",
+        WebkitBackdropFilter: "blur(10px)",
+      }}
+    >
+      <div
+        className="relative w-full max-w-lg max-h-[82vh] flex flex-col rounded-3xl overflow-hidden"
+        style={{
+          background: "rgba(10, 10, 16, 0.97)",
+          border: "1px solid rgba(255,255,255,0.07)",
+          boxShadow:
+            "0 0 90px rgba(99,102,241,0.14), 0 30px 60px rgba(0,0,0,0.7)",
+        }}
+      >
+        <div
+          className="absolute -top-20 left-1/2 -translate-x-1/2 w-72 h-40 rounded-full blur-3xl opacity-25 pointer-events-none"
+          style={{
+            background:
+              "radial-gradient(ellipse, rgba(99,102,241,1) 0%, transparent 70%)",
+          }}
+        />
+
+        <div className="relative z-10 flex items-start justify-between px-6 pt-6 pb-4 border-b border-white/5">
+          <div>
+            <h2 className="text-2xl font-black italic uppercase tracking-tight text-white leading-none">
+              Settings
+            </h2>
+            <p className="text-[10px] font-black uppercase tracking-widest mt-1">
+              {modifiedCount > 0 ? (
+                <span className="text-yellow-400/80">
+                  {modifiedCount} modified
+                </span>
+              ) : (
+                <span className="text-gray-600">All defaults</span>
+              )}
+            </p>
+          </div>
+
+          <div className="flex items-center gap-2 mt-0.5">
+            <button
+              onClick={resetAll}
+              disabled={modifiedCount === 0}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest border transition-all
+    disabled:opacity-30 disabled:cursor-not-allowed
+    bg-yellow-400/10 text-yellow-400 border-yellow-400/20 hover:bg-yellow-400/20"
+            >
+              <RotateCcw size={11} />
+              Reset All
+            </button>
+            <button
+              onClick={onClose}
+              className="w-8 h-8 flex items-center justify-center rounded-2xl bg-white/5 border border-white/8 text-gray-500 hover:text-white hover:bg-white/10 transition-all"
+            >
+              <X size={14} />
+            </button>
+          </div>
+        </div>
+
+        <div className="relative z-10 px-6 py-3 border-b border-white/5">
+          <div className="relative">
+            <input
+              type="text"
+              placeholder="Search settings..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="w-full bg-white/5 border border-white/8 rounded-2xl px-4 py-2.5 pr-10 text-sm text-white placeholder-gray-700 outline-none focus:border-indigo-500/40 focus:bg-white/[0.07] transition-all"
+            />
+            {search && (
+              <button
+                onClick={() => setSearch("")}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-white"
+              >
+                <X size={14} />
+              </button>
+            )}
+          </div>
+        </div>
+
+        <div className="relative z-10 flex-1 overflow-y-auto px-6 py-5 space-y-6">
+          {Object.entries(grouped).length === 0 && (
+            <p className="text-[11px] font-black uppercase tracking-widest text-gray-600 text-center py-10">
+              No settings match.
+            </p>
+          )}
+
+          {Object.entries(grouped).map(([group, paths]) => (
+            <div key={group}>
+              <div className="flex items-center gap-2.5 mb-3">
+                <span className="px-2.5 py-0.5 bg-indigo-500/15 rounded-md text-[9px] font-black uppercase tracking-widest text-indigo-400">
+                  {group}
+                </span>
+                <div className="flex-1 h-px bg-white/5" />
+              </div>
+
+              <div className="space-y-1">
+                {paths.map((path) => {
+                  const isDefault = isValueEqual(
+                    flatCurrent[path],
+                    flatDefaults[path],
+                  );
+                  const isBoolean = typeof flatCurrent[path] === "boolean";
+                  return (
+                    <div
+                      key={path}
+                      className={`rounded-2xl px-4 py-3 border transition-all duration-200 hover:shadow-[0_0_20px_rgba(99,102,241,0.08)]
+    ${
+      !isDefault
+        ? "bg-yellow-400/[0.04] border-yellow-400/15"
+        : "bg-white/[0.02] border-transparent hover:bg-white/5 hover:border-white/8"
+    }`}
+                    >
+                      {isBoolean ? (
+                        <div className="flex items-center justify-between gap-4">
+                          <FieldLabel
+                            path={path}
+                            description={descriptions[path]}
+                          />
+                          {renderInput(
+                            path,
+                            flatCurrent[path],
+                            flatDefaults[path],
+                          )}
+                        </div>
+                      ) : (
+                        <div className="flex flex-col gap-2">
+                          <FieldLabel
+                            path={path}
+                            description={descriptions[path]}
+                          />
+                          {renderInput(
+                            path,
+                            flatCurrent[path],
+                            flatDefaults[path],
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+});

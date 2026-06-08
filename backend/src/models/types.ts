@@ -48,6 +48,7 @@ export interface Settings {
   display: { fullscreen: boolean; crtEffect: boolean; volume: number };
   media: { defaultVolume: number; cacheLimitGB: number; preloadNext: boolean };
   input: { deadzone: number; repeatDelay: number; repeatInterval: number };
+  autoupdate: AutoUpdateSettings;
   players: { name: string; color: string }[];
   libraryFolders: string[];
 }

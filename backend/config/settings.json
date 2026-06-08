@@ -23,5 +23,19 @@
   "libraryFolders": [
     "C:\\Program Files (x86)\\Steam\\steamapps\\common",
     "C:\\Roms"
-  ]
+  ],
+  "_descriptions": {
+    "display.fullscreen": "Enable fullscreen mode",
+    "display.crtEffect": "Enable the retro CRT screen effect (scanlines, vignette, chroma shift)",
+    "display.volume": "Master volume (0–100)",
+    "media.defaultVolume": "Default media player volume (0–100)",
+    "media.cacheLimitGB": "Maximum disk space for video cache (GB)",
+    "media.preloadNext": "Pre‑fetch the next video in the queue",
+    "input.deadzone": "Minimum joystick movement before it registers (0–1)",
+    "input.repeatDelay": "Keyboard navigation repeat delay (ms)",
+    "input.repeatInterval": "Keyboard navigation repeat interval (ms)",
+    "autoupdate.autoupdate": "Automatically check for and apply updates",
+    "autoupdate.remindMeAboutUpdate": "Show a reminder when an update is available (ignored if autoupdate is on)",
+    "autoupdate.updateSilently": "Install updates in the background without any notification"
+  }
 }

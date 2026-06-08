@@ -157,7 +157,10 @@ export function TopBar({ clock, players }: TopBarProps) {
             [{userName}]
           </span>
         </div>
-        <div className="p-3 bg-white/5 rounded-2xl border border-white/10 text-indigo-400">
+        <div
+          className="p-3 bg-white/5 rounded-2xl border border-white/10 text-indigo-400 hover:scale-105 cursor-pointer transition-transform hover:bg-white/10"
+          onClick={() => alert("User profile features coming soon!")}
+        >
           <User size={20} />
         </div>
       </div>

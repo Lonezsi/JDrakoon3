@@ -1,4 +1,3 @@
-import { useState, useEffect } from "react";
 import {
   MonitorPlay,
   Play,
@@ -19,6 +18,8 @@ import {
 } from "lucide-react";
 import { useMediaPlayer } from "../../hooks/useMediaPlayer";
 import { notifService } from "../../services/notificationService";
+import { SettingsModal } from "./SettingsModal";
+import { useState, useEffect, useCallback } from "react";
 
 interface FooterProps {
   players: { id: string; name: string; color: string }[];
@@ -30,6 +31,10 @@ export function Footer({ players }: FooterProps) {
   const media = useMediaPlayer();
   const [newUrl, setNewUrl] = useState("");
   const [seekDrag, setSeekDrag] = useState<number | null>(null);
+
+  const handleCloseSettings = useCallback(() => setSettingsOpen(false), []);
+
+  const [isSettingsOpen, setSettingsOpen] = useState(false);
 
   // Show error notification
   useEffect(() => {
@@ -415,18 +420,19 @@ export function Footer({ players }: FooterProps) {
       {/* System buttons */}
       <div className="flex gap-2.5 flex-shrink-0">
         <button
-          onClick={() => {}}
-          className="p-3.5 bg-white/5 rounded-2xl border border-white/10 text-gray-500 hover:text-white hover:bg-white/10 transition-colors"
+          onClick={() => setSettingsOpen(true)}
+          className="p-3.5 bg-white/5 rounded-2xl border border-white/10 text-gray-500 hover:text-white hover:bg-white/10 transition-colors hover:scale-105 cursor-pointer"
         >
           <Settings size={18} />
         </button>
         <button
-          onClick={() => {}}
-          className="p-3.5 bg-red-500/10 rounded-2xl border border-red-500/20 text-red-500 hover:bg-red-500/20 transition-colors"
+          onClick={() => alert("Quit functionality coming soon!")}
+          className="p-3.5 bg-red-500/10 rounded-2xl border border-red-500/20 text-red-500 hover:bg-red-500/20 transition-colors hover:scale-105 cursor-pointer"
         >
           <LogOut size={18} />
         </button>
       </div>
+      {isSettingsOpen && <SettingsModal onClose={handleCloseSettings} />}
     </div>
   );
 }
