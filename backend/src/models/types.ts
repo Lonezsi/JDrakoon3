@@ -52,6 +52,15 @@ export interface Settings {
   libraryFolders: string[];
 }
 
+export interface AutoUpdateSettings {
+  /** If true, check for updates and apply them automatically (badge + auto‑trigger). */
+  autoupdate: boolean;
+  /** Only used when autoupdate is false. If true, show an update modal on startup. */
+  remindMeAboutUpdate: boolean;
+  /** If true, download and apply updates without any UI indication; applied on next restart. */
+  updateSilently: boolean;
+}
+
 export interface Action {
   type: string;
   playerId: string;

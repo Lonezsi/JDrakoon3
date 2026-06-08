@@ -1,4 +1,5 @@
-﻿import qrcode from "qrcode";
+﻿import "dotenv/config";
+import qrcode from "qrcode";
 import express from "express";
 import type { Request, Response, NextFunction } from "express";
 import os from "os";
@@ -19,6 +20,8 @@ import { broadcast } from "./websocket/broadcast";
 import { authService } from "./services/AuthService";
 import { createProxyMiddleware } from "http-proxy-middleware";
 import { exec, execSync } from "child_process";
+import { promisify } from "util";
+const execAsync = promisify(exec);
 
 async function bootstrap() {
   if (!fs.existsSync(CACHE_DIR)) fs.mkdirSync(CACHE_DIR, { recursive: true });
@@ -35,10 +38,82 @@ async function bootstrap() {
 
   const isDev = process.env.NODE_ENV !== "production";
 
+  // ── API routes (must come before proxies / static) ──────────
+
   // Serve cached thumbnails and video files under /cache
   app.use("/cache", express.static(CACHE_DIR));
 
-  // ── API routes (must come before proxies / static) ──────────
+  app.get("/api/settings", (req, res) => {
+    res.json(settingsService.get());
+  });
+
+  // ── Auto‑update endpoint ──────────────────────────────────────────
+  app.post("/api/update", express.json(), async (req, res) => {
+    const { key } = req.body || {};
+    const secret = process.env.UPDATE_SECRET;
+
+    // Require a secret to be configured and matched
+    if (!secret || key !== secret) {
+      logger.warn("Update attempt with invalid or missing secret");
+      return res.status(403).json({ ok: false, error: "unauthorized" });
+    }
+
+    try {
+      // 1. Pull the latest code (assumes the server was cloned from git)
+      logger.info("Pulling latest changes from git...");
+      await execAsync("git pull origin main", { cwd: process.cwd() });
+
+      // 2. Install backend dependencies (in case package.json changed)
+      logger.info("Installing backend dependencies...");
+      await execAsync("npm install", { cwd: process.cwd() });
+
+      // 3. Rebuild the TV frontend
+      const tvDir = path.join(process.cwd(), "../couch-console");
+      if (fs.existsSync(tvDir)) {
+        logger.info("Building couch-console...");
+        await execAsync("npm install", { cwd: tvDir });
+        await execAsync("npm run build", { cwd: tvDir });
+        // Copy the build output into frontend-build
+        const tvDist = path.join(tvDir, "dist");
+        const tvTarget = path.join(process.cwd(), "frontend-build");
+        if (fs.existsSync(tvDist)) {
+          await execAsync(
+            `powershell -Command "Copy-Item -Path '${tvDist}\\*' -Destination '${tvTarget}' -Recurse -Force"`,
+          );
+          logger.info("TV frontend updated.");
+        }
+      } else {
+        logger.warn("TV frontend folder not found; skipping.");
+      }
+
+      // 4. Rebuild the phone frontend
+      const phoneDir = path.join(process.cwd(), "../couch-remote");
+      if (fs.existsSync(phoneDir)) {
+        logger.info("Building couch-remote...");
+        await execAsync("npm install", { cwd: phoneDir });
+        await execAsync("npm run build", { cwd: phoneDir });
+        const phoneDist = path.join(phoneDir, "dist");
+        const phoneTarget = path.join(process.cwd(), "frontend-build", "phone");
+        if (fs.existsSync(phoneDist)) {
+          await execAsync(
+            `powershell -Command "Copy-Item -Path '${phoneDist}\\*' -Destination '${phoneTarget}' -Recurse -Force"`,
+          );
+          logger.info("Phone frontend updated.");
+        }
+      } else {
+        logger.warn("Phone frontend folder not found; skipping.");
+      }
+
+      res.json({
+        ok: true,
+        message:
+          "Update applied. Please restart the server or refresh the frontends.",
+      });
+    } catch (err: any) {
+      logger.error("Auto‑update failed:", err);
+      res.status(500).json({ ok: false, error: err.message || String(err) });
+    }
+  });
 
   // Dynamic QR code for phone pairing
   app.get("/qr-code", async (req, res) => {

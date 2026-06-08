@@ -14,6 +14,11 @@
     "repeatDelay": 300,
     "repeatInterval": 60
   },
+  "autoupdate": {
+    "autoupdate": true,
+    "remindMeAboutUpdate": true,
+    "updateSilently": false
+  },
   "players": [],
   "libraryFolders": [
     "C:\\Program Files (x86)\\Steam\\steamapps\\common",

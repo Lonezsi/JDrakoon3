@@ -197,3 +197,79 @@ Project: JDrakoon3. I have a bug.
 - Relevant logs/screenshots: [attach if possible]
 Please ask clarifying questions before proposing a fix. Do NOT assume code you haven't seen.
 ```
+
+---
+
+Here are the biggest issues I see after going through the whole project:
+
+---
+
+## 1. **Pending / optimistic queue system is completely broken**
+
+- The **backend** no longer tracks `pendingItems`, does not emit `queue_add_failed`, and ignores `pendingId` in `queue_add` (the diff and current backend code confirm this).
+- The **TV frontend** still has the full optimistic logic: it creates `PendingItem`s, shows shimmer UI, expects `queue_add_failed` events, and retries failed adds.
+- **Result:** pending shimmer cards will never disappear, retries will never stop, and error notifications from the server will never arrive. The whole optimistic flow is dead.
+
+## 2. **Phone media controls only partially wired**
+
+- The phone’s `MediaTab` uses actions like `MOVE_QUEUE_ITEM`, `SHUFFLE_QUEUE`, `LOOP_TOGGLE`, `PLAYBACK_SPEED`, `SUBTITLES_TOGGLE`, but **none of these are handled in the transport function** inside `socket.js`.
+- Only `MEDIA_PLAY_PAUSE`, `MEDIA_NEXT`, `MEDIA_PREV`, `MEDIA_VOLUME`, `MEDIA_MUTE`, `MEDIA_SEEK`, `ADD_TO_QUEUE`, `REMOVE_FROM_QUEUE` are actually mapped.
+- So shuffle, loop, reorder, speed, subtitles, clear queue – all dead from the phone.
+
+## 3. **Phone MediaTab uses a fake data shape, actual server data will break the UI**
+
+- The phone expects `item.color` and `item.channel` but the server’s `QueueItem` has neither.
+- The `Thumb` component renders `item.color` as a background / border color – when it’s `undefined`, the UI will silently break (empty styles, unreadable text).
+- The phone’s local optimistic queue will be overwritten by `queue_updated`, causing flickering and lost reordering.
+
+## 4. **Touchpad / mouse / keyboard input from phone does nothing**
+
+- The `TouchpadTab` sends `MOUSE_MOVE`, `SCROLL`, `MOUSE_CLICK`, `KEY_PRESS`, `TEXT_INPUT` – all are unhandled in the transport switch.
+- Even if they were sent, the **backend has no handlers** for these action types. The whole Touchpad tab is a non‑functional mock.
+
+## 5. **Double `queue_updated` emissions after every mutation**
+
+- The backend’s `socketio_server.ts` now manually emits `queue_updated` after every single queue operation (play, pause, seek, etc.).
+- At the same time, `videoQueue.subscribe()` already broadcasts `queue_updated` on every state change.
+- Every mutation now sends **two identical events** to all clients. Causes extra traffic and risks subtle state race conditions.
+
+## 6. **`queue_updated` is not sent on new connections, causing empty queue on fresh join**
+
+- The `join` handler used to send `queue_updated` to the newly connected socket immediately (so they wouldn’t see an empty queue until the next mutation).
+- That line was **removed** (visible in the diff and current code). Now a freshly joined phone or TV will see no queue until someone performs an action.
+
+## 7. **Production authentication is impossible**
+
+- The backend’s token verification in `socketio_server.ts` requires a valid token or `SOCKET_SECRET` in production.
+- The **TV connects without any token**.
+- The **phone app also connects without a token** (the `connectSocket` call passes no token).
+- Works in dev because auth is bypassed. In production, neither client will be able to connect.
+
+## 8. **Phone’s “Back” button has no effect**
+
+- The phone’s `RemoteTab` has a Back button that sends `Actions.BACK`.
+- The TV’s socket event handler only handles `navigate`, `confirm`, `move`, `home`. There is **no handling for “back”** anywhere in the TV app.
+
+## 9. **`SyncService` is never used for actual state recovery**
+
+- It records every event and can replay diffs via the `resync` event, but **no client ever calls `resync`**.
+- It adds complexity and memory usage for no benefit.
+
+## 10. **Undefined behavior on phone login / reconnect**
+
+- `App.jsx` calls `connectSocket(null, { name, color })`. The `connect` function in `socket.js` treats the first argument as `url` and ignores it if falsy (uses computed URL). That’s fine, but **if the socket already exists**, the early return block does **not** set up the transport function again. If the transport was previously broken or unset (e.g., after a disconnect), the phone will appear connected but send no input.
+- The `setTransport` is only called once on the very first socket creation.
+
+---
+
+## Summary of critical breakages
+
+1. Optimistic queue UI is completely dead (stuck spinners, never removes).
+2. Most phone media controls (shuffle, loop, move, etc.) do nothing.
+3. Phone MediaTab will visually break on real data (missing `color`/`channel`).
+4. Touchpad tab is entirely non‑functional.
+5. New clients see an empty queue until something changes.
+6. Production deployment impossible due to missing auth tokens.
+7. `queue_updated` is spammed twice on every media action.
+
+These are the highest‑priority issues based on the current codebase.

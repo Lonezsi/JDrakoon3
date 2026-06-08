@@ -1,6 +1,6 @@
 {
   "name": "couch-console-backend",
-  "version": "1.0.0",
+  "version": "3.0.0",
   "description": "Local server for JDrakoon3 console",
   "main": "dist/index.js",
   "scripts": {

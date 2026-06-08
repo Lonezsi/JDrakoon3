@@ -1,6 +1,8 @@
 import { Tv } from "lucide-react";
 
 export function BootScreen() {
+  const appVersion = (globalThis as any).__APP_VERSION__ || "0.0.0";
+
   return (
     <div className="h-screen w-screen bg-black flex flex-col items-center justify-center text-white">
       <div className="relative mb-8">
@@ -10,7 +12,10 @@ export function BootScreen() {
         </div>
       </div>
       <p className="text-[11px] font-black tracking-[0.55em] uppercase text-indigo-300/60 mb-1">
-        JDrakoon v3.0
+        JDrakoon
+      </p>
+      <p className="text-[10px] text-gray-700 font-bold uppercase tracking-widest mb-6">
+        v{appVersion}
       </p>
       <p className="text-[10px] text-gray-700 font-bold uppercase tracking-widest">
         Lonezsi
