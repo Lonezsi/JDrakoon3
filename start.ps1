@@ -8,6 +8,7 @@ param(
 $root = Split-Path -Parent $MyInvocation.MyCommand.Path
 Set-Location $root
 $ErrorActionPreference = "Stop"
+$savedNodeEnv = $env:NODE_ENV
 $env:NODE_ENV = "production"
 
 # ── Helper: check if a directory needs rebuild ──────
@@ -172,4 +173,5 @@ foreach ($id in $leftoverPids) {
     Write-Host "Cleaned up leftover process $id on port 3001"
 }
 
+$env:NODE_ENV = $savedNodeEnv
 Write-Host "Done." -ForegroundColor Green

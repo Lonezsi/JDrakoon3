@@ -1,6 +1,47 @@
 import { useState, useEffect } from "react";
 import { RotateCcw, X } from "lucide-react";
 import React from "react";
+import { useFocus, useFocusable } from "../../navigation/FocusContext";
+
+// A button inside the modal focus layer. Renders a focus ring when targeted.
+function ModalButton({
+  id,
+  onSelect,
+  className,
+  focusRing,
+  disabled,
+  initial,
+  title,
+  children,
+}: {
+  id: string;
+  onSelect: () => void;
+  className: string;
+  focusRing: string;
+  disabled?: boolean;
+  initial?: boolean;
+  title?: string;
+  children: React.ReactNode;
+}) {
+  const { ref, focused } = useFocusable<HTMLButtonElement>(id, {
+    layer: "modal",
+    onSelect: () => {
+      if (!disabled) onSelect();
+    },
+    initial,
+  });
+  return (
+    <button
+      ref={ref}
+      onClick={onSelect}
+      disabled={disabled}
+      title={title}
+      className={`${className} ${focused ? focusRing : ""}`}
+    >
+      {children}
+    </button>
+  );
+}
 
 // ---------- helpers ----------
 
@@ -67,6 +108,15 @@ export const SettingsModal = React.memo(function SettingsModal({
   const [defaults, setDefaults] = useState<Record<string, any> | null>(null);
   const [descriptions, setDescriptions] = useState<Record<string, string>>({});
   const [search, setSearch] = useState("");
+
+  const { pushLayer, popLayer } = useFocus();
+
+  // Trap navigation inside the modal; `back` triggers onClose. Runs
+  // unconditionally so it stays above the early return below.
+  useEffect(() => {
+    pushLayer("modal", onClose);
+    return () => popLayer("modal");
+  }, [pushLayer, popLayer, onClose]);
 
   useEffect(() => {
     fetch("/api/settings")
@@ -377,22 +427,27 @@ export const SettingsModal = React.memo(function SettingsModal({
           </div>
 
           <div className="flex items-center gap-2 mt-0.5">
-            <button
-              onClick={resetAll}
+            <ModalButton
+              id="modal-reset"
+              onSelect={resetAll}
               disabled={modifiedCount === 0}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest border transition-all
     disabled:opacity-30 disabled:cursor-not-allowed
     bg-yellow-400/10 text-yellow-400 border-yellow-400/20 hover:bg-yellow-400/20"
+              focusRing="ring-2 ring-yellow-400 scale-105"
             >
               <RotateCcw size={11} />
               Reset All
-            </button>
-            <button
-              onClick={onClose}
+            </ModalButton>
+            <ModalButton
+              id="modal-close"
+              onSelect={onClose}
+              initial
               className="w-8 h-8 flex items-center justify-center rounded-2xl bg-white/5 border border-white/8 text-gray-500 hover:text-white hover:bg-white/10 transition-all"
+              focusRing="ring-2 ring-indigo-400 text-white bg-white/10 scale-105"
             >
               <X size={14} />
-            </button>
+            </ModalButton>
           </div>
         </div>
 

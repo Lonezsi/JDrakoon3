@@ -1,8 +1,7 @@
-import { useEffect, useState, useMemo, useRef, useCallback } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { appState } from "./core/stateMachine";
 import { events } from "./core/events";
-import { launchApp } from "./services/launcherService";
-import { connect, getSocket, subscribe } from "./services/socket";
+import { connect, subscribe } from "./services/socket";
 import { useLobbyRenderer } from "./hooks/useLobbyRenderer";
 import { useGameLoop, emitChange } from "./hooks/useGameLoop";
 import { useClock } from "./hooks/useClock";
@@ -13,121 +12,30 @@ import { DashboardLayout } from "./ui/layouts/DashboardLayout";
 import { AppRunningOverlay } from "./ui/components/AppRunningOverlay";
 import { Notifications } from "./ui/components/Notifications";
 import { PhoneQR } from "./ui/components/PhoneQR";
-import { MOCK_APPS as library } from "./shared/constants";
 import type { AppState, Player } from "./shared/types";
 import { notifService } from "./services/notificationService";
+import { FocusProvider, useFocus } from "./navigation/FocusContext";
 
 // ---------------------------------------------------------------
-// Global debounce hook – one single cooldown for all navigation
+// Wires input system and socket messages to the focus manager.
+// Selection behaviour lives on each focusable's onSelect, so this
+// only needs to translate raw input into move/select/back.
+// Must render inside FocusProvider.
 // ---------------------------------------------------------------
-function useDebouncedNavigation(
-  activeIndex: number,
-  setActiveIndex: React.Dispatch<React.SetStateAction<number>>,
-  libraryLength: number,
-) {
-  const lastActionTime = useRef(0);
-  const activeIndexRef = useRef(activeIndex);
+function AppController({
+  state,
+  sceneRef,
+  remotePlayerIds,
+  setRemotePlayers,
+}: {
+  state: AppState;
+  sceneRef: React.MutableRefObject<any>;
+  remotePlayerIds: Set<string>;
+  setRemotePlayers: React.Dispatch<React.SetStateAction<Player[]>>;
+}) {
+  const { move, select, goBack, resetToRoot } = useFocus();
 
-  // keep the ref in sync
-  useEffect(() => {
-    activeIndexRef.current = activeIndex;
-  }, [activeIndex]);
-
-  const navigateLeft = useCallback(() => {
-    if (appState.current !== "HOME") return;
-    const now = Date.now();
-    if (now - lastActionTime.current < 300) return;
-    lastActionTime.current = now;
-    setActiveIndex((prev) => Math.max(prev - 1, 0));
-  }, [setActiveIndex]);
-
-  const navigateRight = useCallback(() => {
-    if (appState.current !== "HOME") return;
-    const now = Date.now();
-    if (now - lastActionTime.current < 300) return;
-    lastActionTime.current = now;
-    setActiveIndex((prev) => Math.min(prev + 1, libraryLength - 1));
-  }, [setActiveIndex, libraryLength]);
-
-  const confirm = useCallback(() => {
-    if (appState.current !== "HOME") return;
-    const now = Date.now();
-    if (now - lastActionTime.current < 300) return;
-    lastActionTime.current = now;
-    const idx = activeIndexRef.current;
-    if (idx >= 0 && idx < library.length) {
-      launchApp(library[idx]);
-    }
-  }, []);
-
-  return { navigateLeft, navigateRight, confirm };
-}
-
-// ---------------------------------------------------------------
-export default function App() {
-  const [state, setState] = useState<AppState>("BOOT");
-  const [activeIndex, setActiveIndex] = useState(0);
-  const [remotePlayers, setRemotePlayers] = useState<Player[]>([]);
-
-  const remotePlayerIds = useMemo(
-    () => new Set(remotePlayers.map((p) => p.id)),
-    [remotePlayers],
-  );
-
-  const gameState = useGameLoop();
-  const clock = useClock();
-  const allPlayers = useMemo(() => gameState.players, [gameState.players]);
-  const { mountRef, sceneRef } = useLobbyRenderer(allPlayers);
-
-  const { navigateLeft, navigateRight, confirm } = useDebouncedNavigation(
-    activeIndex,
-    setActiveIndex,
-    library.length,
-  );
-
-  const [keyboardPlayers, setKeyboardPlayers] = useState<
-    Record<string, string | null>
-  >({
-    wasd: null, // playerId once joined
-    uhjk: null,
-  });
-
-  const gamepadPlayersRef = useRef<Record<number, string | null>>({});
-  const socket = getSocket();
-
-  // Boot → HOME
-  useEffect(() => {
-    if (state !== "BOOT") return;
-    const t = setTimeout(() => {
-      appState.transition("HOME");
-      setState("HOME");
-    }, 2600);
-    return () => clearTimeout(t);
-  }, [state]);
-
-  // State machine listener
-  useEffect(() => {
-    const unsub = events.on("state:change", (newState: AppState) =>
-      setState(newState),
-    );
-    return unsub;
-  }, []);
-
-  // scene.onUpdate → playerManager
-  useEffect(() => {
-    if (!sceneRef.current) return;
-    sceneRef.current.onUpdate = (players) => {
-      playerManager.players = players;
-      emitChange();
-    };
-    return () => {
-      if (sceneRef.current) sceneRef.current.onUpdate = undefined;
-    };
-  }, [sceneRef]);
-
-  // ---------------------------------------------------------------
-  // LOCAL INPUT: movement + debounced navigation
-  // ---------------------------------------------------------------
+  // ── Local input ────────────────────────────────────────────────
   useEffect(() => {
     const nameCounters = new Map<string, number>();
     const colorPalette = [
@@ -165,7 +73,6 @@ export default function App() {
     }
 
     const unsub = inputManager.onActions((actions) => {
-      // --- movement processing ---
       const movedIds = new Set<string>();
       for (const action of actions) {
         if (
@@ -183,19 +90,20 @@ export default function App() {
             moveValue.x * speed,
             moveValue.y * speed,
           );
-        }
-        // --- debounced navigation ---
-        else if (action.type === "navigate") {
+        } else if (action.type === "navigate") {
           const dir = (action.value as { direction: string } | undefined)
             ?.direction;
-          if (dir === "left") navigateLeft();
-          else if (dir === "right") navigateRight();
+          if (dir === "left") move("left");
+          else if (dir === "right") move("right");
+          else if (dir === "up") move("up");
+          else if (dir === "down") move("down");
         } else if (action.type === "confirm") {
-          confirm();
+          select();
+        } else if (action.type === "back") {
+          goBack();
         }
       }
 
-      // stop any local player that didn't send a move this frame
       playerManager.players.forEach((p) => {
         if (!movedIds.has(p.id) && !remotePlayerIds.has(p.id)) {
           sceneRef.current?.setPlayerInput(p.id, 0, 0);
@@ -204,16 +112,13 @@ export default function App() {
     });
 
     const stopInput = inputManager.start();
-
     return () => {
       unsub();
       stopInput();
     };
-  }, [sceneRef, remotePlayerIds, navigateLeft, navigateRight, confirm]);
+  }, [move, select, goBack, sceneRef, remotePlayerIds]);
 
-  // ---------------------------------------------------------------
-  // SOCKET & REMOTE HANDLING
-  // ---------------------------------------------------------------
+  // ── Socket ─────────────────────────────────────────────────────
   useEffect(() => {
     if (state === "BOOT") return;
 
@@ -249,30 +154,37 @@ export default function App() {
           break;
         }
         case "navigate": {
-          if (msg.direction === "left") navigateLeft();
-          else if (msg.direction === "right") navigateRight();
+          if (msg.direction === "left") move("left");
+          else if (msg.direction === "right") move("right");
+          else if (msg.direction === "up") move("up");
+          else if (msg.direction === "down") move("down");
           break;
         }
         case "confirm":
-          confirm();
+          select();
+          break;
+        case "back":
+          goBack();
           break;
         case "home":
           appState.transition("HOME");
-          setActiveIndex(0);
+          resetToRoot();
           break;
         case "action": {
-          // treat "action" messages the same way as direct navigate/confirm
           const action = msg;
           if (action.type === "navigate" && action.value?.direction) {
-            if (action.value.direction === "left") navigateLeft();
-            else if (action.value.direction === "right") navigateRight();
+            if (action.value.direction === "left") move("left");
+            else if (action.value.direction === "right") move("right");
+            else if (action.value.direction === "up") move("up");
+            else if (action.value.direction === "down") move("down");
           } else if (action.type === "confirm") {
-            confirm();
+            select();
+          } else if (action.type === "back") {
+            goBack();
           }
           break;
         }
         case "move": {
-          // inject remote thumbstick into the local input pipeline
           const moveMsg = msg as {
             playerId: string;
             dx: number;
@@ -303,9 +215,56 @@ export default function App() {
       unsub();
       socket?.disconnect();
     };
-  }, [state, navigateLeft, navigateRight, confirm]);
+  }, [state, move, select, goBack, resetToRoot, setRemotePlayers]);
 
-  // ---------------------------------------------------------------
+  return null;
+}
+
+// ---------------------------------------------------------------
+export default function App() {
+  const [state, setState] = useState<AppState>("BOOT");
+  const [remotePlayers, setRemotePlayers] = useState<Player[]>([]);
+
+  const remotePlayerIds = useMemo(
+    () => new Set(remotePlayers.map((p) => p.id)),
+    [remotePlayers],
+  );
+
+  const gameState = useGameLoop();
+  const clock = useClock();
+  const allPlayers = useMemo(() => gameState.players, [gameState.players]);
+  const { mountRef, sceneRef } = useLobbyRenderer(allPlayers);
+
+  // Boot → HOME
+  useEffect(() => {
+    if (state !== "BOOT") return;
+    const t = setTimeout(() => {
+      appState.transition("HOME");
+      setState("HOME");
+    }, 2600);
+    return () => clearTimeout(t);
+  }, [state]);
+
+  // State machine listener
+  useEffect(() => {
+    const unsub = events.on("state:change", (newState: AppState) =>
+      setState(newState),
+    );
+    return unsub;
+  }, []);
+
+  // scene.onUpdate → playerManager
+  useEffect(() => {
+    if (!sceneRef.current) return;
+    sceneRef.current.onUpdate = (players: Player[]) => {
+      playerManager.players = players;
+      emitChange();
+    };
+    return () => {
+      if (sceneRef.current) sceneRef.current.onUpdate = undefined;
+    };
+  }, [sceneRef]);
+
   if (state === "BOOT") return <BootScreen />;
 
   return (
@@ -314,21 +273,24 @@ export default function App() {
       style={{ fontFamily: "'Segoe UI', system-ui, sans-serif" }}
     >
       <div ref={mountRef} className="fixed inset-0 z-0 pointer-events-none" />
-      <div
-        className={`h-full transition-all duration-700 ${
-          state === "APP_RUNNING"
-            ? "opacity-0 scale-95 blur-2xl pointer-events-none"
-            : ""
-        }`}
-      >
-        <DashboardLayout
-          clock={clock}
-          players={allPlayers}
-          activeIndex={activeIndex}
-          setActiveIndex={setActiveIndex}
+      <FocusProvider>
+        <AppController
+          state={state}
+          sceneRef={sceneRef}
+          remotePlayerIds={remotePlayerIds}
+          setRemotePlayers={setRemotePlayers}
         />
-      </div>
-      {state === "APP_RUNNING" && <AppRunningOverlay />}
+        <div
+          className={`h-full transition-all duration-700 ${
+            state === "APP_RUNNING"
+              ? "opacity-0 scale-95 blur-2xl pointer-events-none"
+              : ""
+          }`}
+        >
+          <DashboardLayout clock={clock} players={allPlayers} />
+        </div>
+        {state === "APP_RUNNING" && <AppRunningOverlay />}
+      </FocusProvider>
       <Notifications />
       <PhoneQR />
       <style>{`
@@ -337,11 +299,11 @@ export default function App() {
           to   { transform: translateX(0);    opacity: 1; }
         }
         .notif { animation: notif-in 0.38s cubic-bezier(.19,1,.22,1) forwards; }
-      
+
         @keyframes card-in {
           from { opacity: 0; transform: scale(0.96) translateY(4px); }
           to   { opacity: 1; transform: scale(1)    translateY(0);   }
-        } 
+        }
         .queue-card { animation: card-in 0.22s ease forwards; }
       `}</style>
     </div>

@@ -8,8 +8,8 @@
     "start": "node dist/index.js",
     "dev": "concurrently \"npm run dev:backend\" \"npm run dev:console\" \"npm run dev:remote\"",
     "dev:backend": "set NODE_ENV=production && ts-node src/index.ts",
-    "dev:console": "cd ../couch-console && npm run dev",
-    "dev:remote": "cd ../couch-remote && npm run dev",
+    "dev:console": "cd ../couch-console && set NODE_ENV=development && npm run dev",
+    "dev:remote": "cd ../couch-remote && set NODE_ENV=development && npm run dev",
     "watch": "ts-node-dev --respawn src/index.ts"
   },
   "dependencies": {

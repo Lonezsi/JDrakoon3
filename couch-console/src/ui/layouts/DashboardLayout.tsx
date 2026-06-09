@@ -6,20 +6,13 @@ import type { Player } from "../../shared/types";
 interface DashboardLayoutProps {
   clock: Date;
   players: Player[];
-  activeIndex: number;
-  setActiveIndex: React.Dispatch<React.SetStateAction<number>>;
 }
 
-export function DashboardLayout({
-  clock,
-  players,
-  activeIndex,
-  setActiveIndex,
-}: DashboardLayoutProps) {
+export function DashboardLayout({ clock, players }: DashboardLayoutProps) {
   return (
     <div className="relative z-10 h-full w-full flex flex-col p-10">
       <TopBar clock={clock} players={players} />
-      <AppLauncher activeIndex={activeIndex} setActiveIndex={setActiveIndex} />
+      <AppLauncher />
       <Footer players={players} />
     </div>
   );

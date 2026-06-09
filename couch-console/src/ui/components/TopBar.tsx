@@ -1,6 +1,7 @@
 import { User } from "lucide-react";
 import type { Player } from "../../shared/types";
 import { useEffect, useState } from "react";
+import { useFocusable } from "../../navigation/FocusContext";
 
 interface TopBarProps {
   clock: Date;
@@ -10,6 +11,9 @@ interface TopBarProps {
 const GITHUB_REPO = "Lonezsi/JDrakoon3";
 
 export function TopBar({ clock, players }: TopBarProps) {
+  const profileFocus = useFocusable<HTMLDivElement>("topbar-profile", {
+    onSelect: () => alert("User profile features coming soon!"),
+  });
   const timeStr = clock.toLocaleTimeString([], {
     hour: "2-digit",
     minute: "2-digit",
@@ -42,22 +46,21 @@ export function TopBar({ clock, players }: TopBarProps) {
         `https://api.github.com/repos/${GITHUB_REPO}/releases/latest`,
       );
       const data = await res.json();
-      const remote = data.tag_name?.replace(/^v/, ""); // "v0.2.0" → "0.2.0"
-      if (appVersion === "0.0.0") return false; // skip in dev
+      const remote = data.tag_name?.replace(/^v/, "");
+      if (appVersion === "0.0.0") return false;
       if (remote && remote !== appVersion) {
         setLatestVersion(remote);
         return true;
       }
       return false;
     } catch {
-      return false; // offline or rate‑limited – silently skip
+      return false;
     }
   };
 
   // ── Trigger the update ────────────────────────────────────────
   const triggerUpdate = () => {
-    // Try the build‑time secret first, otherwise prompt the user
-    let secret = __UPDATE_SECRET__ || "";
+    let secret = (window as any).__UPDATE_SECRET__ || "";
     if (!secret) {
       secret = prompt("Enter update secret key:") || "";
     }
@@ -71,7 +74,6 @@ export function TopBar({ clock, players }: TopBarProps) {
       .then((res) => res.json())
       .then((data) => {
         if (data.ok) {
-          // The update was applied; reload the page to get the new frontend.
           window.location.reload();
         } else {
           alert("Update failed: " + (data.error || "unknown error"));
@@ -103,7 +105,7 @@ export function TopBar({ clock, players }: TopBarProps) {
           setShowModal(true);
         }
       })
-      .catch(() => {}); // settings fetch failed – ignore
+      .catch(() => {});
   }, []);
 
   // ── Network info & user name ──────────────────────────────────
@@ -123,7 +125,9 @@ export function TopBar({ clock, players }: TopBarProps) {
 
   // ── Render ─────────────────────────────────────────────────────
   return (
-    <div className="flex justify-between items-start mb-2">
+    <div
+      className="flex justify-between items-start mb-2"
+    >
       <div className="flex items-center gap-4">
         <div className="w-12 h-12 bg-indigo-600 rounded-2xl flex items-center justify-center shadow-lg shadow-indigo-500/40 flex-shrink-0">
           <img src="drakoon.svg" alt="Drakoon" />
@@ -166,7 +170,14 @@ export function TopBar({ clock, players }: TopBarProps) {
           </span>
         </div>
         <div
-          className="p-3 bg-white/5 rounded-2xl border border-white/10 text-indigo-400 hover:scale-105 cursor-pointer transition-transform hover:bg-white/10"
+          ref={profileFocus.ref}
+          className={`p-3 rounded-2xl border cursor-pointer transition-all
+            ${
+              profileFocus.focused
+                ? "bg-white/10 border-indigo-400/60 text-indigo-400 ring-2 ring-indigo-400 shadow-[0_0_20px_rgba(99,102,241,0.6)]"
+                : "bg-white/5 border-white/10 text-indigo-400 hover:bg-white/10 hover:scale-105"
+            }
+          `}
           onClick={() => alert("User profile features coming soon!")}
         >
           <User size={20} />
@@ -193,7 +204,7 @@ export function TopBar({ clock, players }: TopBarProps) {
                 className="accent-indigo-500"
               />
               <label htmlFor="dontShowAgain" className="text-xs text-slate-500">
-                Don’t show again
+                Don't show again
               </label>
             </div>
             <div className="flex gap-2 justify-end">

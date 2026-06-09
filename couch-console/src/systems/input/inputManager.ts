@@ -96,6 +96,24 @@ export class InputManager {
         value: { direction: "right" },
       });
     }
+    if (this.keys.get("arrowup")) {
+      actions.push({
+        type: "navigate",
+        playerId: "AWSD",
+        deviceId: "keyboard1",
+        deviceType: "keyboard",
+        value: { direction: "up" },
+      });
+    }
+    if (this.keys.get("arrowdown")) {
+      actions.push({
+        type: "navigate",
+        playerId: "AWSD",
+        deviceId: "keyboard1",
+        deviceType: "keyboard",
+        value: { direction: "down" },
+      });
+    }
     if (this.keys.get("enter")) {
       actions.push({
         type: "confirm",
@@ -141,6 +159,24 @@ export class InputManager {
           deviceId: `gamepad-${gp.index}`,
           deviceType: "gamepad",
           value: { direction: "right" },
+        });
+      }
+      if (gp.buttons[12]?.pressed) {
+        actions.push({
+          type: "navigate",
+          playerId,
+          deviceId: `gamepad-${gp.index}`,
+          deviceType: "gamepad",
+          value: { direction: "up" },
+        });
+      }
+      if (gp.buttons[13]?.pressed) {
+        actions.push({
+          type: "navigate",
+          playerId,
+          deviceId: `gamepad-${gp.index}`,
+          deviceType: "gamepad",
+          value: { direction: "down" },
         });
       }
       if (gp.buttons[0]?.pressed) {

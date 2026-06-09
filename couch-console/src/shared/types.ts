@@ -18,7 +18,10 @@ export interface DeviceAction {
   playerId?: string;
   deviceId: string;
   deviceType: "keyboard" | "gamepad" | "phone";
-  value: { x: number; y: number } | { direction: "left" | "right" } | boolean;
+  value:
+    | { x: number; y: number }
+    | { direction: "left" | "right" | "up" | "down" }
+    | boolean;
 }
 
 export type AppState = "BOOT" | "HOME" | "SETTINGS" | "APP_RUNNING";

@@ -20,6 +20,7 @@ import { useMediaPlayer } from "../../hooks/useMediaPlayer";
 import { notifService } from "../../services/notificationService";
 import { SettingsModal } from "./SettingsModal";
 import { useState, useEffect, useCallback } from "react";
+import { useFocusable } from "../../navigation/FocusContext";
 
 interface FooterProps {
   players: { id: string; name: string; color: string }[];
@@ -31,10 +32,16 @@ export function Footer({ players }: FooterProps) {
   const media = useMediaPlayer();
   const [newUrl, setNewUrl] = useState("");
   const [seekDrag, setSeekDrag] = useState<number | null>(null);
+  const [isSettingsOpen, setSettingsOpen] = useState(false);
 
   const handleCloseSettings = useCallback(() => setSettingsOpen(false), []);
 
-  const [isSettingsOpen, setSettingsOpen] = useState(false);
+  // Listen for custom event from navigation hook to open settings
+  useEffect(() => {
+    const handler = () => setSettingsOpen(true);
+    window.addEventListener("open-settings", handler);
+    return () => window.removeEventListener("open-settings", handler);
+  }, []);
 
   // Show error notification
   useEffect(() => {
@@ -88,16 +95,22 @@ export function Footer({ players }: FooterProps) {
     ? "fixed inset-0 z-50 bg-black flex items-center justify-center"
     : "relative hidden";
 
-  // Total item count for "Clear" visibility
   const totalQueueCount = media.queue.length + media.pendingItems.length;
 
   const handleShutdown = () => {
     notifService.push("Shutting down…");
-    // Tell the backend to exit (it will kill the kiosk window if running)
     fetch("/api/shutdown", { method: "POST" }).catch(() => {});
-    // Force-close the window after a short delay
     setTimeout(() => window.close(), 500);
   };
+
+  // Only the system buttons are keyboard/gamepad targets. The lobby,
+  // mini player and queue are mouse/phone controlled.
+  const settingsFocus = useFocusable<HTMLButtonElement>("sys-settings", {
+    onSelect: () => setSettingsOpen(true),
+  });
+  const shutdownFocus = useFocusable<HTMLButtonElement>("sys-shutdown", {
+    onSelect: handleShutdown,
+  });
 
   return (
     <div className="flex items-end gap-6 py-4">
@@ -173,8 +186,10 @@ export function Footer({ players }: FooterProps) {
         )}
       </div>
 
-      {/* In the Lobby */}
-      <div className="flex flex-col gap-2.5 flex-shrink-0">
+      {/* ── 0 · In the Lobby ── */}
+      <div
+        className="flex flex-col gap-2.5 flex-shrink-0 rounded-3xl p-2"
+      >
         <h3 className="text-[10px] font-black text-gray-600 uppercase tracking-widest">
           In the Lobby
         </h3>
@@ -197,9 +212,11 @@ export function Footer({ players }: FooterProps) {
         </div>
       </div>
 
-      {/* Mini player */}
+      {/* ── 1 · Mini player ── */}
       {!media.isFullscreen && currentItem != null && (
-        <div className="bg-white/5 rounded-3xl border border-white/10 p-2 gap-2 min-w-0 w-[400px] h-full flex flex-col">
+        <div
+          className="bg-white/5 rounded-3xl border border-white/10 p-2 gap-2 min-w-0 w-[400px] h-full flex flex-col"
+        >
           <div className="flex items-center gap-4">
             <div className="p-2.5 bg-indigo-500/20 rounded-xl text-indigo-400 flex-shrink-0">
               <MonitorPlay size={18} />
@@ -323,8 +340,10 @@ export function Footer({ players }: FooterProps) {
         </div>
       )}
 
-      {/* Queue */}
-      <div className="flex flex-col flex-1 min-w-0 items-start">
+      {/* ── 2 · Queue ── */}
+      <div
+        className="flex flex-col flex-1 min-w-0 items-start rounded-3xl p-2"
+      >
         <h3 className="shrink-0 text-[10px] font-black text-gray-600 uppercase tracking-widest mb-1">
           Queue
         </h3>
@@ -335,7 +354,6 @@ export function Footer({ players }: FooterProps) {
             </p>
           )}
 
-          {/* Confirmed queue items */}
           {media.queue.map((item, idx) => (
             <div
               key={item.id}
@@ -381,18 +399,15 @@ export function Footer({ players }: FooterProps) {
             </div>
           ))}
 
-          {/* Pending (optimistic) items — shown with loading shimmer */}
           {media.pendingItems.map((item) => (
             <div
               key={item.id}
               className="w-44 flex-shrink-0 flex items-start gap-2 rounded-xl p-2 border border-indigo-500/20 bg-indigo-500/5 animate-pulse"
             >
-              {/* Placeholder thumbnail */}
               <div className="w-12 h-12 rounded bg-white/10 flex-shrink-0 flex items-center justify-center">
                 <Loader2 size={16} className="text-indigo-400 animate-spin" />
               </div>
               <div className="flex-1 min-w-0 space-y-1.5 pt-1">
-                {/* Shimmer lines */}
                 <div className="h-2 bg-white/10 rounded-full w-4/5" />
                 <div className="h-1.5 bg-white/5 rounded-full w-3/5" />
                 <p className="text-[8px] text-indigo-400/70 mt-1">
@@ -405,7 +420,6 @@ export function Footer({ players }: FooterProps) {
           ))}
         </div>
 
-        {/* Add URL input */}
         <div className="flex gap-1 mt-2">
           <input
             type="text"
@@ -425,21 +439,36 @@ export function Footer({ players }: FooterProps) {
         </div>
       </div>
 
-      {/* System buttons */}
-      <div className="flex gap-2.5 flex-shrink-0">
+      {/* ── 3 · System buttons ── */}
+      <div className="flex gap-2.5 flex-shrink-0 rounded-3xl p-2">
         <button
+          ref={settingsFocus.ref}
           onClick={() => setSettingsOpen(true)}
-          className="p-3.5 bg-white/5 rounded-2xl border border-white/10 text-gray-500 hover:text-white hover:bg-white/10 transition-colors hover:scale-105 cursor-pointer"
+          className={`p-3.5 rounded-2xl border transition-all hover:scale-105 cursor-pointer
+            ${
+              settingsFocus.focused
+                ? "ring-2 ring-indigo-400 scale-110 bg-white/10 border-indigo-400/60 text-white"
+                : "bg-white/5 border-white/10 text-gray-500 hover:text-white hover:bg-white/10"
+            }
+          `}
         >
           <Settings size={18} />
         </button>
         <button
+          ref={shutdownFocus.ref}
           onClick={handleShutdown}
-          className="p-3.5 bg-red-500/10 rounded-2xl border border-red-500/20 text-red-500 hover:bg-red-500/20 transition-colors hover:scale-105 cursor-pointer"
+          className={`p-3.5 rounded-2xl border transition-all hover:scale-105 cursor-pointer
+            ${
+              shutdownFocus.focused
+                ? "ring-2 ring-red-400 scale-110 bg-red-500/20 border-red-400/60 text-red-400"
+                : "bg-red-500/10 border-red-500/20 text-red-500 hover:bg-red-500/20"
+            }
+          `}
         >
           <LogOut size={18} />
         </button>
       </div>
+
       {isSettingsOpen && <SettingsModal onClose={handleCloseSettings} />}
     </div>
   );
