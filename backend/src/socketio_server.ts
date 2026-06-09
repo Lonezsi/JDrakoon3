@@ -5,9 +5,13 @@ import logger from "./utils/logger";
 import { lobbySync } from "./services/LobbySyncService";
 import { videoQueue } from "./services/VideoQueueService";
 import { inputService } from "./services/InputService";
+import { inputControl } from "./services/InputControlService";
 import { syncService } from "./services/SyncService";
 import { authService } from "./services/AuthService";
 import { console } from "inspector";
+import { gameScanner } from "./services/GameScanner";
+import { appLauncher } from "./services/AppLauncher";
+import { spawn, ChildProcess } from "child_process";
 
 type RateBucket = { tokens: number; lastRefill: number };
 
@@ -59,6 +63,8 @@ function verifyToken(token?: string) {
 }
 
 export function initSocketIO(server: HttpServer) {
+  let currentAppProcess: ChildProcess | null = null;
+
   const io = new IOServer(server, {
     cors: { origin: "*" },
     transports: ["polling", "websocket"],
@@ -76,6 +82,9 @@ export function initSocketIO(server: HttpServer) {
   });
 
   const rateLimiter = makeRateLimiter(30, 60);
+  // Mouse moves stream at touch frequency, so give OS-control its own
+  // generous bucket rather than starving it through the shared limiter.
+  const controlLimiter = makeRateLimiter(300, 300);
 
   io.on("connection", (socket) => {
     logger.info("Socket.IO connection", socket.id);
@@ -163,6 +172,35 @@ export function initSocketIO(server: HttpServer) {
         lobbySync.handleAction(action as any);
       }
       cb?.({ ok: true });
+    });
+
+    // OS-level remote control from the phone touchpad (mouse/keyboard).
+    socket.on("control", (pkt: any) => {
+      if (!controlLimiter(socket)) return;
+      if (!pkt || typeof pkt !== "object") return;
+      if (!socket.data.playerId) return;
+      switch (pkt.kind) {
+        case "move":
+          inputControl.move(Number(pkt.dx) || 0, Number(pkt.dy) || 0);
+          break;
+        case "click":
+          inputControl.click(false);
+          break;
+        case "rclick":
+          inputControl.click(true);
+          break;
+        case "scroll":
+          inputControl.scroll(Number(pkt.dy) || 0);
+          break;
+        case "key":
+          inputControl.key(String(pkt.key || ""));
+          break;
+        case "text":
+          if (typeof pkt.text === "string") inputControl.text(pkt.text);
+          break;
+        default:
+          break;
+      }
     });
 
     // --- QUEUE & MEDIA (new, but backward‑compatible) ---
@@ -326,6 +364,65 @@ export function initSocketIO(server: HttpServer) {
       if (!rateLimiter(socket))
         return cb?.({ ok: false, error: "rate_limited" });
       videoQueue.toggleMute();
+      cb?.({ ok: true });
+    });
+
+    // ── Library & App launching ────────────────────────────── // TODO check on this. not really used for now
+    socket.on("scan_library", async (cb?: Function) => {
+      const library = await gameScanner.scan();
+      socket.emit("library_updated", library);
+      cb?.({ ok: true, library });
+    });
+
+    socket.on(
+      "launch_app",
+      async (payload: { appId: string; launcher?: string }, cb?: Function) => {
+        const exePath = payload.launcher;
+        if (!exePath) return cb?.({ ok: false, error: "no_launcher_path" });
+
+        try {
+          // Kill any previously launched app
+          if (currentAppProcess) {
+            currentAppProcess.kill();
+          }
+
+          const proc = spawn(exePath, [], {
+            shell: true,
+            detached: true,
+            stdio: "ignore",
+            windowsHide: false,
+          });
+          proc.unref();
+
+          currentAppProcess = proc;
+
+          proc.on("exit", (code) => {
+            logger.info(`App ${payload.appId} exited with code ${code}`);
+            currentAppProcess = null;
+            io.to("lobby").emit("app_closed", { appId: payload.appId, code });
+            inputService.setFocus("menu");
+          });
+
+          io.to("lobby").emit("app_launched", {
+            appId: payload.appId,
+            name: payload.appId, // fallback
+          });
+          inputService.setFocus("fullscreen");
+          cb?.({ ok: true });
+        } catch (err) {
+          logger.error("Failed to launch app:", err);
+          cb?.({ ok: false, error: "launch_failed" });
+        }
+      },
+    );
+
+    socket.on("close_app", (cb?: Function) => {
+      if (currentAppProcess) {
+        currentAppProcess.kill();
+        currentAppProcess = null;
+      }
+      io.to("lobby").emit("app_closed", {});
+      inputService.setFocus("menu");
       cb?.({ ok: true });
     });
 

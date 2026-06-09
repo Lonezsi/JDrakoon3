@@ -28,6 +28,9 @@ interface FocusEntry {
   layer: string;
   ref: React.MutableRefObject<HTMLElement | null>;
   onSelectRef: React.MutableRefObject<(() => void) | undefined>;
+  // Optional handler letting a focused element consume a direction (e.g. a
+  // slider adjusting on left/right). Return true to consume — focus won't move.
+  onMoveRef: React.MutableRefObject<((dir: Direction) => boolean) | undefined>;
   initial: boolean;
   order: number;
 }
@@ -107,13 +110,20 @@ export function FocusProvider({ children }: { children: ReactNode }) {
     if (Date.now() - lastNav.current < NAV_COOLDOWN) return;
 
     const layer = activeLayerRef.current;
+    const curId = focusRef.current[layer];
+    const cur = curId ? registry.current.get(curId) : null;
+
+    // Let the focused element intercept first (e.g. a slider adjusts on
+    // left/right). If it consumes the direction, focus stays put.
+    if (cur?.ref.current && cur.onMoveRef.current?.(dir)) {
+      lastNav.current = Date.now();
+      return;
+    }
+
     const entries = [...registry.current.values()].filter(
       (e) => e.layer === layer && e.ref.current,
     );
     if (entries.length === 0) return;
-
-    const curId = focusRef.current[layer];
-    const cur = curId ? registry.current.get(curId) : null;
 
     lastNav.current = Date.now();
 
@@ -246,6 +256,7 @@ export function useFocus(): FocusContextValue {
 interface UseFocusableOptions {
   layer?: string;
   onSelect?: () => void;
+  onMove?: (dir: Direction) => boolean;
   initial?: boolean;
 }
 
@@ -255,12 +266,14 @@ export function useFocusable<T extends HTMLElement = HTMLElement>(
   id: string,
   options: UseFocusableOptions = {},
 ) {
-  const { layer = "root", onSelect, initial = false } = options;
+  const { layer = "root", onSelect, onMove, initial = false } = options;
   const ctx = useFocus();
 
   const ref = useRef<T | null>(null);
   const onSelectRef = useRef(onSelect);
   onSelectRef.current = onSelect; // keep latest closure each render
+  const onMoveRef = useRef(onMove);
+  onMoveRef.current = onMove;
 
   useEffect(() => {
     const entry: FocusEntry = {
@@ -268,6 +281,7 @@ export function useFocusable<T extends HTMLElement = HTMLElement>(
       layer,
       ref: ref as React.MutableRefObject<HTMLElement | null>,
       onSelectRef,
+      onMoveRef,
       initial,
       order: 0,
     };

@@ -336,6 +336,38 @@ async function bootstrap() {
       });
     } catch {}
 
+    app.get("/app-running", (req, res) => {
+      res.send(`<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>App Running</title>
+  <style>
+    body { background: #04040a; color: #e2e8f0; font-family: 'Segoe UI',system-ui,sans-serif; display:flex; align-items:center; justify-content:center; height:100dvh; margin:0; }
+    .box { text-align:center; }
+    h1 { font-size:2rem; font-weight:900; text-transform:uppercase; letter-spacing:0.1em; margin-bottom:0.5rem; }
+    p { color:#64748b; font-size:0.875rem; }
+    button { margin-top:2rem; padding:0.75rem 1.5rem; background:#ef4444; color:white; border:none; border-radius:1rem; font-weight:bold; cursor:pointer; font-size:1rem; }
+  </style>
+  <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+</head>
+<body>
+  <div class="box">
+    <h1>App is running</h1>
+    <p>Press any button on your controller or click below to close it.</p>
+    <button onclick="closeApp()">Close App</button>
+  </div>
+  <script>
+    const socket = io(location.origin);
+    socket.on("app_closed", () => { window.location.href = "/"; });
+    function closeApp() { socket.emit("close_app"); }
+    document.addEventListener("keydown", () => { socket.emit("close_app"); });
+  </script>
+</body>
+</html>`);
+    });
+
     // Kill Edge via PID file (if present)
     try {
       const pidFile = path.join(process.cwd(), ".edge_pid");

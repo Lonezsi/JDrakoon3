@@ -16,6 +16,13 @@ export default function TouchpadTab() {
 
   const handleTouchStart = (e) => {
     if (e.touches.length >= 2) setTwoFinger(true);
+    // Seed last-position so the first move after (re)touching has a zero
+    // delta instead of jumping from a stale previous-touch coordinate.
+    if (touchRef.current) {
+      touchRef.current.lastX = e.touches[0].clientX;
+      touchRef.current.lastY = e.touches[0].clientY;
+      touchRef.current.lastScrollY = e.touches[0].clientY;
+    }
   };
   const handleTouchEnd = (e) => {
     if (e.touches.length === 0) setTwoFinger(false);
@@ -70,7 +77,7 @@ export default function TouchpadTab() {
       <div className="flex flex-col landscape:flex-row gap-2">
         {/* Utility row */}
         <div className="flex flex-wrap gap-1.5 flex-1">
-          {["ESC", "ALT+TAB", "WIN", "Enter"].map((key) => (
+          {["ESC", "ALT+TAB", "WIN", "Backspace", "Enter"].map((key) => (
             <button
               key={key}
               onClick={() => sendAction(Actions.KEY_PRESS, { key })}

@@ -29,6 +29,7 @@ export type AppState = "BOOT" | "HOME" | "SETTINGS" | "APP_RUNNING";
 export interface AppDefinition {
   id: string;
   name: string;
+  launcher?: string;
   icon: React.ReactNode;
   color: string;
   hex: string;

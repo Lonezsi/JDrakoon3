@@ -1,16 +1,51 @@
-# React + Vite
+# couch-console
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+The TV-side UI for [JDrakoon3](../README.md) — the dashboard you see on the big
+screen. Boot screen, app launcher, video queue / mini-player, a shared 3D lobby
+(Three.js), and a settings modal.
 
-Currently, two official plugins are available:
+Built with React + Vite + Tailwind. Talks to the backend over Socket.IO (`:3001`).
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+## Develop
 
-## React Compiler
+```sh
+npm install
+npm run dev        # Vite dev server on localhost:5173
+```
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+Open it via the Vite dev server, **not** the backend's static build, or HMR won't
+be injected (you'd see `$RefreshSig$ is not defined`). From the repo root you can
+also run `make console`.
 
-## Expanding the ESLint configuration
+```sh
+npm run build      # production build into dist/ (make build copies it to the backend)
+```
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+## Layout
+
+| Path                              | Purpose                                              |
+| --------------------------------- | ---------------------------------------------------- |
+| `src/App.tsx`                     | Root: boot → home, socket wiring, maps input → focus |
+| `src/navigation/FocusContext.tsx` | Geometry-based focus registry (`useFocusable`, layers) |
+| `src/systems/input/`              | Local keyboard / gamepad → `DeviceAction`s           |
+| `src/ui/layouts/DashboardLayout`  | Top bar + app launcher + footer                      |
+| `src/ui/components/`              | TopBar, AppLauncher, Footer, SettingsModal, …        |
+| `src/services/socket.ts`          | Socket.IO client + subscribe/notify                  |
+| `src/hooks/`                      | Clock, game loop, lobby renderer, media player       |
+
+## Navigation
+
+Menu focus is handled by `useFocusable` from
+[`src/navigation/FocusContext.tsx`](src/navigation/FocusContext.tsx). To make
+something targetable by arrow keys / gamepad / phone D-pad:
+
+```tsx
+const { ref, focused } = useFocusable("my-id", { onSelect: () => doThing() });
+return <button ref={ref} className={focused ? "ring-2 ring-indigo-400" : ""} />;
+```
+
+`move(dir)` picks the nearest target by screen position, so there are no
+coordinates or transition tables to maintain. Modals push a focus **layer**
+(`pushLayer`/`popLayer`) which traps navigation until closed. See the
+[root README](../README.md#input--navigation) for the full input pipeline,
+including how phone input arrives as the same `move/select/goBack` calls.

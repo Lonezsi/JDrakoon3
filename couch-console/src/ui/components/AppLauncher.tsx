@@ -1,5 +1,5 @@
 import { ChevronRight, Plus } from "lucide-react";
-import { MOCK_APPS } from "../../shared/constants";
+import { APPS } from "../../shared/constants";
 import { launchApp } from "../../services/launcherService";
 import { notifService } from "../../services/notificationService";
 import { useFocusable } from "../../navigation/FocusContext";
@@ -76,12 +76,12 @@ export function AppLauncher() {
           Library
         </span>
         <span className="text-[10px] font-black text-gray-600 uppercase tracking-widest">
-          {MOCK_APPS.length} Apps
+          {APPS.length} Apps
         </span>
       </div>
 
       <div className="flex gap-5 items-center h-64 overflow-visible px-2">
-        {MOCK_APPS.map((app, idx) => (
+        {APPS.map((app, idx) => (
           <AppCard key={app.id} app={app} initial={idx === 0} />
         ))}
         <div

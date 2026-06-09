@@ -130,6 +130,15 @@ function AppController({
 
     const unsub = subscribe((msg) => {
       switch (msg.type) {
+        case "app_launched": {
+          notifService.push(`Launched ${msg.name || msg.appId}`);
+          window.location.href = "/app-running";
+          break;
+        }
+        case "app_closed": {
+          appState.transition("HOME");
+          break;
+        }
         case "lobby_state": {
           const serverPlayers = (msg.players || []).filter(
             (p: Player) => p.deviceType !== "console",

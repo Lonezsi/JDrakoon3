@@ -126,6 +126,11 @@ export function connect(url, opts = {}) {
         socket.emit("input:event", { buttons: { a: true } });
         break;
 
+      // ── BACK (backend maps b → back in menu focus) ──
+      case "BACK":
+        socket.emit("input:event", { buttons: { b: true } });
+        break;
+
       // ── HOME (backend maps start → home in menu focus) ──
       case "HOME":
         socket.emit("input:event", { buttons: { start: true } });
@@ -138,6 +143,31 @@ export function connect(url, opts = {}) {
         break;
       case "START":
         socket.emit("action", { type: "start" });
+        break;
+
+      // ── Touchpad: OS mouse / keyboard control ─────────────
+      case "MOUSE_MOVE":
+        socket.emit("control", {
+          kind: "move",
+          dx: payload?.dx ?? 0,
+          dy: payload?.dy ?? 0,
+        });
+        break;
+      case "MOUSE_CLICK":
+        socket.emit("control", { kind: "click" });
+        break;
+      case "MOUSE_RIGHT_CLICK":
+        socket.emit("control", { kind: "rclick" });
+        break;
+      case "SCROLL":
+        // Two-finger drag delta (px) → wheel notches; invert for natural scroll.
+        socket.emit("control", { kind: "scroll", dy: -(payload?.dy ?? 0) * 3 });
+        break;
+      case "KEY_PRESS":
+        socket.emit("control", { kind: "key", key: payload?.key });
+        break;
+      case "TEXT_INPUT":
+        socket.emit("control", { kind: "text", text: payload?.text ?? "" });
         break;
 
       // ── Media controls ────────────────────────────────────

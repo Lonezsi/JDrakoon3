@@ -3,6 +3,69 @@ import { RotateCcw, X } from "lucide-react";
 import React from "react";
 import { useFocus, useFocusable } from "../../navigation/FocusContext";
 
+// ---------- helpers ----------
+
+function flattenObject(obj: any, prefix = ""): Record<string, any> {
+  const result: Record<string, any> = {};
+  for (const key of Object.keys(obj)) {
+    const value = obj[key];
+    const path = prefix ? `${prefix}.${key}` : key;
+    if (value && typeof value === "object" && !Array.isArray(value)) {
+      Object.assign(result, flattenObject(value, path));
+    } else {
+      result[path] = value;
+    }
+  }
+  return result;
+}
+
+function unflattenValue(path: string, value: any): any {
+  const parts = path.split(".");
+  const result: any = {};
+  let current = result;
+  for (let i = 0; i < parts.length - 1; i++) {
+    current[parts[i]] = {};
+    current = current[parts[i]];
+  }
+  current[parts[parts.length - 1]] = value;
+  return result;
+}
+
+function isValueEqual(a: any, b: any) {
+  if (Array.isArray(a) && Array.isArray(b)) {
+    return JSON.stringify(a) === JSON.stringify(b);
+  }
+  return a === b;
+}
+
+function FieldLabel({
+  path,
+  description,
+}: {
+  path: string;
+  description?: string;
+}) {
+  const leaf = (path.split(".").pop() || path)
+    .replace(/([A-Z])/g, " $1")
+    .replace(/_/g, " ")
+    .trim();
+
+  return (
+    <div className="min-w-0">
+      <span className="text-[11px] font-black uppercase tracking-widest text-white/70 leading-none">
+        {leaf}
+      </span>
+      {description && (
+        <p className="text-[10px] text-gray-600 mt-0.5 leading-tight">
+          {description}
+        </p>
+      )}
+    </div>
+  );
+}
+
+// ---------- focusable header buttons ----------
+
 // A button inside the modal focus layer. Renders a focus ring when targeted.
 function ModalButton({
   id,
@@ -43,55 +106,248 @@ function ModalButton({
   );
 }
 
-// ---------- helpers ----------
+// ---------- visual-only controls (operated via the focused row, or mouse) ----------
 
-function flattenObject(obj: any, prefix = ""): Record<string, any> {
-  const result: Record<string, any> = {};
-  for (const key of Object.keys(obj)) {
-    const value = obj[key];
-    const path = prefix ? `${prefix}.${key}` : key;
-    if (value && typeof value === "object" && !Array.isArray(value)) {
-      Object.assign(result, flattenObject(value, path));
-    } else {
-      result[path] = value;
-    }
-  }
-  return result;
+function ResetBtn({ onReset }: { onReset: () => void }) {
+  return (
+    <button
+      onClick={onReset}
+      title="Reset to default"
+      className="flex-shrink-0 text-yellow-400/50 hover:text-yellow-400 transition-colors p-2 -m-1"
+    >
+      <RotateCcw size={11} />
+    </button>
+  );
 }
 
-function unflattenValue(path: string, value: any): any {
-  const parts = path.split(".");
-  const result: any = {};
-  let current = result;
-  for (let i = 0; i < parts.length - 1; i++) {
-    current[parts[i]] = {};
-    current = current[parts[i]];
-  }
-  current[parts[parts.length - 1]] = value;
-  return result;
-}
-
-function FieldLabel({
-  path,
-  description,
+function ToggleVisual({
+  value,
+  isDefault,
+  onToggle,
 }: {
-  path: string;
-  description?: string;
+  value: boolean;
+  isDefault: boolean;
+  onToggle: () => void;
 }) {
-  const leaf = (path.split(".").pop() || path)
-    .replace(/([A-Z])/g, " $1")
-    .replace(/_/g, " ")
-    .trim();
+  return (
+    <button
+      onClick={onToggle}
+      className={`relative w-10 h-5 rounded-full transition-all duration-300 ${
+        value ? "bg-indigo-500" : "bg-white/10"
+      } ${!isDefault ? "ring-1 ring-yellow-400/40" : ""}`}
+    >
+      <span
+        className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow-lg transition-all duration-300 ${
+          value ? "left-5" : "left-0.5"
+        }`}
+      />
+    </button>
+  );
+}
+
+function SliderVisual({
+  value,
+  max,
+  step,
+  isDefault,
+  onCommit,
+  onReset,
+}: {
+  value: number;
+  max: number;
+  step: number;
+  isDefault: boolean;
+  onCommit: (v: number) => void;
+  onReset: () => void;
+}) {
+  const [localVal, setLocalVal] = useState<number | null>(null);
+  const displayVal = localVal !== null ? localVal : value;
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setLocalVal(parseFloat(e.target.value));
+  };
+  const handleCommit = () => {
+    if (localVal !== null) {
+      onCommit(localVal);
+      setLocalVal(null);
+    }
+  };
+
+  const pct = Math.min(100, (displayVal / max) * 100);
+  const accent = isDefault ? "bg-indigo-500" : "bg-yellow-400";
+  const thumbBorder = isDefault
+    ? "border-indigo-400/60 shadow-indigo-500/20"
+    : "border-yellow-400/60 shadow-yellow-400/20";
 
   return (
-    <div className="min-w-0">
-      <span className="text-[11px] font-black uppercase tracking-widest text-white/70 leading-none">
-        {leaf}
+    <div className="flex items-center gap-3">
+      <div className="relative flex-1 py-2">
+        <div className="relative h-1 bg-white/10 rounded-full">
+          <div
+            className={`absolute inset-y-0 left-0 rounded-full ${accent} transition-all`}
+            style={{ width: `${pct}%` }}
+          />
+          <div
+            className={`absolute top-1/2 -translate-y-1/2 -translate-x-1/2 w-3.5 h-3.5 rounded-full bg-white border-2 shadow-lg cursor-pointer ${thumbBorder}`}
+            style={{ left: `${pct}%` }}
+          />
+        </div>
+        <input
+          type="range"
+          min={0}
+          max={max}
+          step={step}
+          value={displayVal}
+          onChange={handleChange}
+          onMouseUp={handleCommit}
+          onTouchEnd={handleCommit}
+          className="absolute inset-0 w-full opacity-0 cursor-pointer"
+        />
+      </div>
+      <span className="text-xs font-black w-10 text-right tabular-nums text-gray-500">
+        {Number.isInteger(displayVal) ? displayVal : displayVal.toFixed(2)}
       </span>
-      {description && (
-        <p className="text-[10px] text-gray-600 mt-0.5 leading-tight">
-          {description}
-        </p>
+      {!isDefault && <ResetBtn onReset={onReset} />}
+    </div>
+  );
+}
+
+function EditableArrayInput({
+  value,
+  isDefault,
+  onCommit,
+  onReset,
+}: {
+  value: string[];
+  isDefault: boolean;
+  onCommit: (v: string[]) => void;
+  onReset: () => void;
+}) {
+  const [text, setText] = useState(value.join("\n"));
+
+  const handleBlur = () => {
+    const folders = text
+      .split("\n")
+      .map((s) => s.trim())
+      .filter(Boolean);
+    onCommit(folders);
+  };
+
+  return (
+    <div className="flex flex-col gap-2">
+      <textarea
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        onBlur={handleBlur}
+        rows={4}
+        className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-xs font-mono text-white outline-none resize-y"
+        placeholder="One folder path per line"
+      />
+      {!isDefault && <ResetBtn onReset={onReset} />}
+    </div>
+  );
+}
+
+// ---------- one whole setting = one focus target ----------
+
+function SettingRow({
+  path,
+  value,
+  defaultValue,
+  description,
+  initial,
+  onUpdate,
+  onReset,
+}: {
+  path: string;
+  value: any;
+  defaultValue: any;
+  description?: string;
+  initial?: boolean;
+  onUpdate: (v: any) => void;
+  onReset: () => void;
+}) {
+  const isDefault = isValueEqual(value, defaultValue);
+  const isBoolean = typeof value === "boolean";
+  const isNumber = typeof value === "number";
+
+  const isVolume = path.toLowerCase().includes("volume");
+  const isDeadzone = path.toLowerCase().includes("deadzone");
+  const max = isVolume ? 100 : isDeadzone ? 1 : 1000;
+  const step = isVolume ? 1 : 0.01;
+
+  // A / Enter toggles a boolean setting.
+  const onSelect = isBoolean ? () => onUpdate(!value) : undefined;
+
+  // Left / right nudges a numeric setting (~5% of range, snapped to step).
+  const onMove = isNumber
+    ? (dir: "left" | "right" | "up" | "down") => {
+        if (dir !== "left" && dir !== "right") return false;
+        const delta = (dir === "right" ? 1 : -1) * Math.max(step, max / 20);
+        let next = Math.min(max, Math.max(0, value + delta));
+        next = step < 1 ? Math.round(next * 100) / 100 : Math.round(next);
+        onUpdate(next);
+        return true;
+      }
+    : undefined;
+
+  const { ref, focused } = useFocusable<HTMLDivElement>(path, {
+    layer: "modal",
+    onSelect,
+    onMove,
+    initial,
+  });
+
+  const rowClass = `rounded-2xl px-4 py-3 border transition-all duration-200 ${
+    focused
+      ? "ring-2 ring-indigo-400 bg-white/[0.07] border-indigo-400/40 shadow-[0_0_24px_rgba(99,102,241,0.2)]"
+      : !isDefault
+        ? "bg-yellow-400/[0.04] border-yellow-400/15"
+        : "bg-white/[0.02] border-transparent"
+  }`;
+
+  return (
+    <div ref={ref} className={rowClass}>
+      {isBoolean ? (
+        <div className="flex items-center justify-between gap-4">
+          <FieldLabel path={path} description={description} />
+          <div className="flex items-center gap-2">
+            <ToggleVisual
+              value={value}
+              isDefault={isDefault}
+              onToggle={() => onUpdate(!value)}
+            />
+            {!isDefault && <ResetBtn onReset={onReset} />}
+          </div>
+        </div>
+      ) : (
+        <div className="flex flex-col gap-2">
+          <FieldLabel path={path} description={description} />
+          {isNumber ? (
+            <SliderVisual
+              value={value}
+              max={max}
+              step={step}
+              isDefault={isDefault}
+              onCommit={onUpdate}
+              onReset={onReset}
+            />
+          ) : Array.isArray(value) ? (
+            <EditableArrayInput
+              value={value}
+              isDefault={isDefault}
+              onCommit={onUpdate}
+              onReset={onReset}
+            />
+          ) : (
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-mono text-gray-500 break-all">
+                {String(value)}
+              </span>
+              {!isDefault && <ResetBtn onReset={onReset} />}
+            </div>
+          )}
+        </div>
       )}
     </div>
   );
@@ -158,13 +414,6 @@ export const SettingsModal = React.memo(function SettingsModal({
     grouped[group].push(path);
   }
 
-  const isValueEqual = (a: any, b: any) => {
-    if (Array.isArray(a) && Array.isArray(b)) {
-      return JSON.stringify(a) === JSON.stringify(b);
-    }
-    return a === b;
-  };
-
   const modifiedCount = allPaths.filter(
     (p) => !isValueEqual(flatCurrent[p], flatDefaults[p]),
   ).length;
@@ -209,176 +458,6 @@ export const SettingsModal = React.memo(function SettingsModal({
       fetch("/api/settings")
         .then((r) => r.json())
         .then((data) => setSettings(data)),
-    );
-  };
-
-  // ---------- render helpers ----------
-
-  const ResetBtn = ({ path }: { path: string }) => (
-    <button
-      onClick={() => resetField(path)}
-      title="Reset to default"
-      className="flex-shrink-0 text-yellow-400/50 hover:text-yellow-400 transition-colors p-2 -m-1"
-    >
-      <RotateCcw size={11} />
-    </button>
-  );
-
-  // ---------- Slider with debounced commit ----------
-  const SliderField = ({
-    path,
-    value,
-    max,
-    step,
-    isDefault,
-  }: {
-    path: string;
-    value: number;
-    max: number;
-    step: number;
-    isDefault: boolean;
-  }) => {
-    const [localVal, setLocalVal] = useState<number | null>(null);
-    const displayVal = localVal !== null ? localVal : value;
-
-    const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-      setLocalVal(parseFloat(e.target.value));
-    };
-
-    const handleCommit = () => {
-      if (localVal !== null) {
-        updateField(path, localVal);
-        setLocalVal(null);
-      }
-    };
-
-    const pct = Math.min(100, (displayVal / max) * 100);
-    const accent = isDefault ? "bg-indigo-500" : "bg-yellow-400";
-    const thumbBorder = isDefault
-      ? "border-indigo-400/60 shadow-indigo-500/20"
-      : "border-yellow-400/60 shadow-yellow-400/20";
-
-    return (
-      <div className="flex items-center gap-3">
-        <div className="relative flex-1 py-2">
-          <div className="relative h-1 bg-white/10 rounded-full">
-            <div
-              className={`absolute inset-y-0 left-0 rounded-full ${accent} transition-all`}
-              style={{ width: `${pct}%` }}
-            />
-            <div
-              className={`absolute top-1/2 -translate-y-1/2 -translate-x-1/2 w-3.5 h-3.5 rounded-full bg-white border-2 shadow-lg cursor-pointer ${thumbBorder}`}
-              style={{ left: `${pct}%` }}
-            />
-          </div>
-          <input
-            type="range"
-            min={0}
-            max={max}
-            step={step}
-            value={displayVal}
-            onChange={handleChange}
-            onMouseUp={handleCommit}
-            onTouchEnd={handleCommit}
-            className="absolute inset-0 w-full opacity-0 cursor-pointer"
-          />
-        </div>
-        <span className="text-xs font-black w-10 text-right tabular-nums text-gray-500">
-          {Number.isInteger(displayVal) ? displayVal : displayVal.toFixed(2)}
-        </span>
-        {!isDefault && <ResetBtn path={path} />}
-      </div>
-    );
-  };
-
-  // ---------- Editable array for library folders ----------
-  const EditableArrayInput = ({
-    value,
-    path,
-    isDefault,
-  }: {
-    value: string[];
-    path: string;
-    isDefault: boolean;
-  }) => {
-    const [text, setText] = useState(value.join("\n"));
-
-    const handleBlur = () => {
-      const folders = text
-        .split("\n")
-        .map((s) => s.trim())
-        .filter(Boolean);
-      updateField(path, folders);
-    };
-
-    return (
-      <div className="flex flex-col gap-2">
-        <textarea
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          onBlur={handleBlur}
-          rows={4}
-          className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-xs font-mono text-white outline-none resize-y"
-          placeholder="One folder path per line"
-        />
-        {!isDefault && <ResetBtn path={path} />}
-      </div>
-    );
-  };
-
-  const renderToggle = (path: string, value: boolean, isDefault: boolean) => (
-    <div className="flex items-center gap-2">
-      <button
-        onClick={() => updateField(path, !value)}
-        className={`relative w-10 h-5 rounded-full transition-all duration-300 ${
-          value ? "bg-indigo-500" : "bg-white/10"
-        } ${!isDefault ? "ring-1 ring-yellow-400/40" : ""}`}
-      >
-        <span
-          className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow-lg transition-all duration-300 ${
-            value ? "left-5" : "left-0.5"
-          }`}
-        />
-      </button>
-      {!isDefault && <ResetBtn path={path} />}
-    </div>
-  );
-
-  const renderInput = (path: string, currentValue: any, defaultValue: any) => {
-    const isDefault = isValueEqual(currentValue, defaultValue);
-    if (typeof currentValue === "boolean")
-      return renderToggle(path, currentValue, isDefault);
-    if (typeof currentValue === "number") {
-      const isVolume = path.toLowerCase().includes("volume");
-      const isDeadzone = path.toLowerCase().includes("deadzone");
-      const max = isVolume ? 100 : isDeadzone ? 1 : 1000;
-      const step = isVolume ? 1 : 0.01;
-      return (
-        <SliderField
-          path={path}
-          value={currentValue}
-          max={max}
-          step={step}
-          isDefault={isDefault}
-        />
-      );
-    }
-    if (Array.isArray(currentValue)) {
-      return (
-        <EditableArrayInput
-          value={currentValue}
-          path={path}
-          isDefault={isDefault}
-        />
-      );
-    }
-    return (
-      <div className="flex items-center gap-2">
-        <span className="text-xs font-mono text-gray-500 break-all">
-          {String(currentValue)}
-        </span>
-        {!isDefault && <ResetBtn path={path} />}
-      </div>
     );
   };
 
@@ -442,7 +521,6 @@ export const SettingsModal = React.memo(function SettingsModal({
             <ModalButton
               id="modal-close"
               onSelect={onClose}
-              initial
               className="w-8 h-8 flex items-center justify-center rounded-2xl bg-white/5 border border-white/8 text-gray-500 hover:text-white hover:bg-white/10 transition-all"
               focusRing="ring-2 ring-indigo-400 text-white bg-white/10 scale-105"
             >
@@ -488,50 +566,18 @@ export const SettingsModal = React.memo(function SettingsModal({
               </div>
 
               <div className="space-y-1">
-                {paths.map((path) => {
-                  const isDefault = isValueEqual(
-                    flatCurrent[path],
-                    flatDefaults[path],
-                  );
-                  const isBoolean = typeof flatCurrent[path] === "boolean";
-                  return (
-                    <div
-                      key={path}
-                      className={`rounded-2xl px-4 py-3 border transition-all duration-200 hover:shadow-[0_0_20px_rgba(99,102,241,0.08)]
-    ${
-      !isDefault
-        ? "bg-yellow-400/[0.04] border-yellow-400/15"
-        : "bg-white/[0.02] border-transparent hover:bg-white/5 hover:border-white/8"
-    }`}
-                    >
-                      {isBoolean ? (
-                        <div className="flex items-center justify-between gap-4">
-                          <FieldLabel
-                            path={path}
-                            description={descriptions[path]}
-                          />
-                          {renderInput(
-                            path,
-                            flatCurrent[path],
-                            flatDefaults[path],
-                          )}
-                        </div>
-                      ) : (
-                        <div className="flex flex-col gap-2">
-                          <FieldLabel
-                            path={path}
-                            description={descriptions[path]}
-                          />
-                          {renderInput(
-                            path,
-                            flatCurrent[path],
-                            flatDefaults[path],
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
+                {paths.map((path) => (
+                  <SettingRow
+                    key={path}
+                    path={path}
+                    value={flatCurrent[path]}
+                    defaultValue={flatDefaults[path]}
+                    description={descriptions[path]}
+                    initial={path === filteredPaths[0]}
+                    onUpdate={(v) => updateField(path, v)}
+                    onReset={() => resetField(path)}
+                  />
+                ))}
               </div>
             </div>
           ))}

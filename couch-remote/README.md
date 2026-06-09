@@ -1,16 +1,50 @@
-# React + Vite
+# couch-remote
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+The phone remote for [JDrakoon3](../README.md) — a webapp that turns a phone into
+a wireless gamepad for the console. D-pad, ABXY face buttons, an analog joystick
+(for the 3D lobby), media controls, and a volume slider.
 
-Currently, two official plugins are available:
+Built with React + Vite + Tailwind. Connects to the backend over Socket.IO
+(`:3001`).
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+## Develop
 
-## React Compiler
+```sh
+npm install
+npm run dev        # Vite dev server on localhost:5174  (or `make remote` from root)
+npm run build      # production build into dist/ (served by the backend at /phone)
+```
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+In normal use you don't run this directly — the backend serves the built app at
+`http://<console-ip>:3001/phone`, reachable from the QR code on the console.
 
-## Expanding the ESLint configuration
+## How input reaches the console
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+1. A control calls `sendAction(Actions.NAV_UP)` etc.
+   ([`src/services/inputActions.js`](src/services/inputActions.js)).
+2. [`src/services/socket.js`](src/services/socket.js) maps each action to a
+   gamepad-shaped Socket.IO `input:event`:
+
+   | Control            | Emitted packet               |
+   | ------------------ | ---------------------------- |
+   | D-pad up/down/left/right | `{ buttons: { up/down/left/right: true } }` |
+   | A / B / X / Y      | `{ buttons: { a/b/x/y: true } }` |
+   | `CONFIRM`          | `{ buttons: { a: true } }`   |
+   | `BACK`             | `{ buttons: { b: true } }`   |
+   | `HOME`             | `{ buttons: { start: true } }` |
+   | Joystick           | `{ analog: { x, y } }`       |
+
+3. The backend interprets those buttons **based on the current focus mode**. On
+   the home dashboard (focus `menu`) the D-pad becomes `navigate`, A becomes
+   `confirm`, B becomes `back`. The console then moves its menu selection.
+
+So the phone D-pad navigates the TV UI exactly like the local arrow keys. See the
+[root README](../README.md#input--navigation) for the full pipeline.
+
+## Layout
+
+| Path                              | Purpose                                  |
+| --------------------------------- | ---------------------------------------- |
+| `src/components/tabs/RemoteTab.jsx` | The gamepad: D-pad, ABXY, joystick, system buttons |
+| `src/services/inputActions.js`    | `Actions` enum + `sendAction` indirection |
+| `src/services/socket.js`          | Socket.IO transport: action → `input:event` |
