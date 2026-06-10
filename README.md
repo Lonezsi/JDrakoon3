@@ -4,7 +4,7 @@ A couch-gaming console: a TV dashboard you drive with a gamepad, arrow keys, or
 your phone as a wireless remote. Launch apps, queue videos, and mess around in a
 shared 3D lobby.
 
-> Status: **Pre-Alpha**. Things move around.
+> Status: **Alpha**. Things move around.
 
 ## Packages
 
@@ -41,10 +41,10 @@ shown on the console (bottom-right) to open `http://<console-ip>:3001/phone`.
 ## Architecture at a glance
 
 ```
-┌────────────┐   input:event / action / media_*   ┌─────────────┐
+┌─────────────┐   input:event / action / media_*    ┌─────────────┐
 │ couch-remote│ ─────────────────────────────────▶ │   backend   │
-│   (phone)   │ ◀───────  lobby_state, etc. ─────── │  Socket.IO  │
-└────────────┘                                      └──────┬──────┘
+│   (phone)   │ ◀───────  lobby_state, etc. ───────│  Socket.IO  │
+└─────────────┘                                     └──────┬──────┘
                                                            │ broadcast to "lobby" room
                                                            ▼
                                                     ┌─────────────┐
