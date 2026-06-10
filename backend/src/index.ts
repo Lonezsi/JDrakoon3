@@ -13,8 +13,16 @@ import { settingsService } from "./services/SettingsService";
 import { gameScanner } from "./services/GameScanner";
 import { appLauncher } from "./services/AppLauncher";
 import { PORT, CACHE_DIR, CONFIG_DIR } from "./config/constants";
+import {
+  readRunningFile,
+  isPidAlive as rfIsPidAlive,
+  removeRunningFile,
+  validateRunningFileStartup,
+  isProcessNameRunning,
+} from "./services/RunningFile";
 import logger from "./utils/logger";
 import fs from "fs";
+import fg from "fast-glob";
 import { inputService } from "./services/InputService";
 import { broadcast } from "./websocket/broadcast";
 import { authService } from "./services/AuthService";
@@ -317,27 +325,51 @@ async function bootstrap() {
     res.json({ ssid });
   });
 
-  // Graceful shutdown – called from TV dashboard
-  app.post("/api/shutdown", async (req, res) => {
-    res.json({ ok: true, message: "Shutting down..." });
+  // Resolve a bare exe name (from a browser file drop, where the full path
+  // isn't exposed) to an absolute path: PATH lookup first, then a shallow
+  // sweep of the usual install locations.
+  app.post("/api/apps/resolve", express.json(), async (req, res) => {
+    const name = String(req.body?.name || "").trim();
+    if (!name || !/^[\w .()-]+\.exe$/i.test(name)) {
+      return res.status(400).json({ ok: false, error: "invalid_name" });
+    }
 
-    // Force‑close all TCP connections so Edge doesn't leave leftovers
     try {
-      server.close(); // stop accepting new connections
-      // Destroy all current sockets
-      (server as any).getConnections((err: any, count: number) => {
-        if (!err) {
-          // This is a bit hacky – we iterate the internal sockets
-          const sockets = (server as any)._connections || {};
-          for (const key of Object.keys(sockets)) {
-            sockets[key].destroy();
-          }
-        }
-      });
+      const out = execSync(`where "${name}"`, {
+        encoding: "utf8",
+        stdio: ["ignore", "pipe", "ignore"],
+      })
+        .split(/\r?\n/)[0]
+        ?.trim();
+      if (out) return res.json({ ok: true, path: out });
     } catch {}
 
-    app.get("/app-running", (req, res) => {
-      res.send(`<!doctype html>
+    const home = os.homedir().replace(/\\/g, "/");
+    const roots = [
+      "C:/Program Files",
+      "C:/Program Files (x86)",
+      `${home}/AppData/Local/Programs`,
+      `${home}/Desktop`,
+    ];
+    for (const root of roots) {
+      try {
+        const hits = await fg(`${root}/**/${name}`, {
+          deep: 3,
+          absolute: true,
+          caseSensitiveMatch: false,
+          suppressErrors: true,
+        });
+        if (hits.length) {
+          return res.json({ ok: true, path: hits[0].replace(/\//g, "\\") });
+        }
+      } catch {}
+    }
+    res.json({ ok: false, error: "not_found" });
+  });
+
+  // Lightweight page shown when an app is running (reduces lag)
+  app.get("/app-running", (req, res) => {
+    res.send(`<!doctype html>
 <html>
 <head>
   <meta charset="utf-8" />
@@ -360,13 +392,32 @@ async function bootstrap() {
   </div>
   <script>
     const socket = io(location.origin);
-    socket.on("app_closed", () => { window.location.href = "/"; });
+    socket.on("app_closed", () => { window.location.replace("/"); });
     function closeApp() { socket.emit("close_app"); }
     document.addEventListener("keydown", () => { socket.emit("close_app"); });
   </script>
 </body>
 </html>`);
-    });
+  });
+
+  // Graceful shutdown – called from TV dashboard
+  app.post("/api/shutdown", async (req, res) => {
+    res.json({ ok: true, message: "Shutting down..." });
+
+    // Force‑close all TCP connections so Edge doesn't leave leftovers
+    try {
+      server.close(); // stop accepting new connections
+      // Destroy all current sockets
+      (server as any).getConnections((err: any, count: number) => {
+        if (!err) {
+          // This is a bit hacky – we iterate the internal sockets
+          const sockets = (server as any)._connections || {};
+          for (const key of Object.keys(sockets)) {
+            sockets[key].destroy();
+          }
+        }
+      });
+    } catch {}
 
     // Kill Edge via PID file (if present)
     try {
@@ -518,6 +569,35 @@ async function bootstrap() {
     broadcast("app_closed", { appId, code });
     inputService.setFocus("menu");
   });
+
+  try {
+    const startup = validateRunningFileStartup();
+    if (startup.existed && !startup.removed) {
+      broadcast("mode-change", { mode: "app-running", pid: startup.pid });
+    }
+  } catch (e) {
+    logger.warn("Failed running-file startup check:", e);
+  }
+
+  const runningFileWatcher = setInterval(() => {
+    try {
+      const cur = readRunningFile();
+      if (!cur) return;
+      if (!cur.pid || !rfIsPidAlive(cur.pid)) {
+        // PID is gone. Check by process name as a fallback (handles launchers)
+        if (isProcessNameRunning(cur.app)) {
+          // Still running by name — keep the running file
+          return;
+        }
+        try {
+          removeRunningFile();
+        } catch {}
+        broadcast("mode-change", { mode: "normal" });
+      }
+    } catch (err) {
+      logger.warn("Running-file watchdog error:", err);
+    }
+  }, 1000);
 
   server.listen(PORT, () => {
     logger.info(`Backend listening on http://localhost:${PORT}`);

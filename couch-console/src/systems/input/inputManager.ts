@@ -9,13 +9,26 @@ export class InputManager {
   // Gamepad
   private rafId: number | null = null;
   private gamepadIndex: number | null = null;
+  // Previous X-button state per gamepad, for edge-triggered jumps.
+  private prevGamepadX = new Map<number, boolean>();
 
   private externalActions: DeviceAction[] = [];
 
   // ─── Start / Stop ──────────────────────────────────────
   start() {
     const onKeyDown = (e: KeyboardEvent) => {
-      this.keys.set(e.key.toLowerCase(), true);
+      const key = e.key.toLowerCase();
+      this.keys.set(key, true);
+      // Edge-triggered jump for the local WASD player (ignore auto-repeat).
+      if (key === "x" && !e.repeat) {
+        this.externalActions.push({
+          type: "jump",
+          playerId: "AWSD",
+          deviceId: "keyboard1",
+          deviceType: "keyboard",
+          value: true,
+        });
+      }
       this.processInput();
     };
     const onKeyUp = (e: KeyboardEvent) => {
@@ -131,9 +144,12 @@ export class InputManager {
 
       const playerId = `gp${gp.index}`; // unique per controller
 
-      // Movement (left stick)
-      const lx = gp.axes[0] ?? 0;
-      const ly = gp.axes[1] ?? 0;
+      // Movement (left stick). Deadzone matters: sticks rest at ~0.01–0.1,
+      // never exactly 0, so without it the cube never registers as "stopped"
+      // (no snap-stop, no settle, and the release logic never runs).
+      const dz = (v: number) => (Math.abs(v) < 0.15 ? 0 : v);
+      const lx = dz(gp.axes[0] ?? 0);
+      const ly = dz(gp.axes[1] ?? 0);
       actions.push({
         type: "move",
         playerId,
@@ -188,6 +204,18 @@ export class InputManager {
           value: true,
         });
       }
+      // X button (index 2) → jump, edge-triggered so it fires once per press.
+      const xPressed = !!gp.buttons[2]?.pressed;
+      if (xPressed && !this.prevGamepadX.get(gp.index)) {
+        actions.push({
+          type: "jump",
+          playerId,
+          deviceId: `gamepad-${gp.index}`,
+          deviceType: "gamepad",
+          value: true,
+        });
+      }
+      this.prevGamepadX.set(gp.index, xPressed);
     }
 
     // External actions

@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import {
   ArrowUp,
   ArrowDown,
@@ -8,11 +8,9 @@ import {
   Power,
   Volume2,
   VolumeX,
-  Maximize,
   Keyboard,
   MousePointer2,
   Settings,
-  Triangle,
 } from "lucide-react";
 
 import { sendAction, Actions } from "../../services/inputActions";
@@ -36,8 +34,8 @@ function PadBtn({
   const lift = () => setDown(false);
 
   // static Tailwind classes
-  const baseClasses = `flex items-center justify-center flex-shrink-0 
-    border-2 cursor-pointer outline-none select-none 
+  const baseClasses = `flex items-center justify-center flex-shrink-0
+    border-2 cursor-pointer outline-none select-none
     transition-transform duration-[70ms]`;
 
   // circle or rounded
@@ -48,12 +46,11 @@ function PadBtn({
 
   return (
     <button
-      onMouseDown={press}
-      onMouseUp={lift}
-      onMouseLeave={lift}
-      onTouchStart={press}
-      onTouchEnd={lift}
-      onTouchCancel={lift}
+      onPointerDown={press}
+      onPointerUp={lift}
+      onPointerLeave={lift}
+      onPointerCancel={lift}
+      onContextMenu={(e) => e.preventDefault()}
       className={`${baseClasses} ${radiusClass}`}
       style={{
         width: size,
@@ -66,6 +63,9 @@ function PadBtn({
         color: "#70708a",
         transform: down ? "translateY(2px)" : "none",
         WebkitTapHighlightColor: "transparent",
+        WebkitUserSelect: "none",
+        WebkitTouchCallout: "none",
+        touchAction: "none",
         fontFamily: "inherit",
         ...extraStyle,
       }}
@@ -81,69 +81,103 @@ const Divider = () => (
 );
 
 // ── Analog joystick (touch / mouse) ──────────────────────────────
+// iOS-safe: no setPointerCapture (flaky in Safari) — instead we track the
+// active pointerId and listen on window, so dragging outside the tiny pad
+// keeps working and release is never missed.
 function Joystick({ onMove, size = 50, knobSize = 48, accent = "#6366f1" }) {
   const containerRef = useRef(null);
   const knobRef = useRef(null);
-  const [active, setActive] = useState(false);
-  const center = { x: size / 2, y: size / 2 };
+  const activeId = useRef(null);
+  const onMoveRef = useRef(onMove);
+  onMoveRef.current = onMove;
+  const center = size / 2;
+  const maxRadius = (size - knobSize) / 2;
+
+  const setKnob = (dx, dy) => {
+    if (knobRef.current) {
+      knobRef.current.style.transform = `translate(${dx + center - knobSize / 2}px, ${dy + center - knobSize / 2}px)`;
+    }
+  };
+
+  useEffect(() => {
+    const update = (clientX, clientY) => {
+      const el = containerRef.current;
+      if (!el) return;
+      const rect = el.getBoundingClientRect();
+      let dx = clientX - rect.left - center;
+      let dy = clientY - rect.top - center;
+      const dist = Math.hypot(dx, dy);
+      if (dist > maxRadius) {
+        dx = (dx / dist) * maxRadius;
+        dy = (dy / dist) * maxRadius;
+      }
+      setKnob(dx, dy);
+      onMoveRef.current(dx / maxRadius, dy / maxRadius);
+    };
+
+    const release = () => {
+      activeId.current = null;
+      setKnob(0, 0);
+      onMoveRef.current(0, 0);
+      // resend the release shortly after, in case the first packet is lost
+      setTimeout(() => onMoveRef.current(0, 0), 90);
+    };
+
+    const onPointerMove = (e) => {
+      if (activeId.current === null || e.pointerId !== activeId.current)
+        return;
+      e.preventDefault();
+      update(e.clientX, e.clientY);
+    };
+    const onPointerEnd = (e) => {
+      if (activeId.current === null || e.pointerId !== activeId.current)
+        return;
+      release();
+    };
+
+    window.addEventListener("pointermove", onPointerMove, { passive: false });
+    window.addEventListener("pointerup", onPointerEnd);
+    window.addEventListener("pointercancel", onPointerEnd);
+    return () => {
+      window.removeEventListener("pointermove", onPointerMove);
+      window.removeEventListener("pointerup", onPointerEnd);
+      window.removeEventListener("pointercancel", onPointerEnd);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handlePointerDown = (e) => {
-    setActive(true);
-    containerRef.current?.setPointerCapture(e.pointerId);
-    updateKnob(e);
-  };
-
-  const handlePointerMove = (e) => {
-    if (!active) return;
-    updateKnob(e);
-  };
-
-  const handlePointerUp = () => {
-    setActive(false);
-    // Reset to centre
-    if (knobRef.current) {
-      knobRef.current.style.transform = `translate(${center.x - knobSize / 2}px, ${center.y - knobSize / 2}px)`;
-    }
-    onMove(0, 0);
-  };
-
-  const updateKnob = (e) => {
+    e.preventDefault();
+    activeId.current = e.pointerId;
     const rect = containerRef.current.getBoundingClientRect();
-    let dx = e.clientX - rect.left - center.x;
-    let dy = e.clientY - rect.top - center.y;
-
-    const dist = Math.sqrt(dx * dx + dy * dy);
-    const maxRadius = (size - knobSize) / 2;
-
+    let dx = e.clientX - rect.left - center;
+    let dy = e.clientY - rect.top - center;
+    const dist = Math.hypot(dx, dy);
     if (dist > maxRadius) {
       dx = (dx / dist) * maxRadius;
       dy = (dy / dist) * maxRadius;
     }
-
-    // Move the knob visually
-    if (knobRef.current) {
-      knobRef.current.style.transform = `translate(${dx + center.x - knobSize / 2}px, ${dy + center.y - knobSize / 2}px)`;
-    }
-
-    // Send normalised values
-    const nx = dx / maxRadius; // -1 to 1
-    const ny = dy / maxRadius;
-    onMove(nx, ny);
+    setKnob(dx, dy);
+    onMoveRef.current(dx / maxRadius, dy / maxRadius);
   };
 
   return (
     <div
       ref={containerRef}
       onPointerDown={handlePointerDown}
-      onPointerMove={handlePointerMove}
-      onPointerUp={handlePointerUp}
-      onPointerLeave={handlePointerUp}
-      className="relative touch-none select-none cursor-pointer"
-      style={{ width: size, height: size }}
+      onContextMenu={(e) => e.preventDefault()}
+      className="relative select-none cursor-pointer"
+      style={{
+        width: size,
+        height: size,
+        touchAction: "none",
+        WebkitUserSelect: "none",
+        WebkitTouchCallout: "none",
+      }}
     >
       {/* Outer ring */}
       <div
-        className="absolute inset-0 rounded-full border"
+        className="absolute inset-0 rounded-full border pointer-events-none"
         style={{
           background: `${accent}10`,
           borderColor: `${accent}25`,
@@ -153,31 +187,51 @@ function Joystick({ onMove, size = 50, knobSize = 48, accent = "#6366f1" }) {
       {/* Joystick knob */}
       <div
         ref={knobRef}
-        className="absolute rounded-full shadow-lg transition-transform duration-75"
+        className="absolute rounded-full shadow-lg pointer-events-none"
         style={{
           width: knobSize,
           height: knobSize,
           background: `radial-gradient(circle at 30% 30%, ${accent}, ${accent}88)`,
           top: 0,
           left: 0,
-          transform: `translate(${center.x - knobSize / 2}px, ${center.y - knobSize / 2}px)`,
+          transform: `translate(${center - knobSize / 2}px, ${center - knobSize / 2}px)`,
         }}
       />
     </div>
   );
 }
 
+const SHOULDERS = [
+  ["L2", "l2"],
+  ["L1", "l1"],
+  ["R1", "r1"],
+  ["R2", "r2"],
+];
+
 export default function RemoteTab() {
   const [vol, setVol] = useState(72);
   const [muted, setMuted] = useState(false);
   const currentVol = muted ? 0 : vol;
 
+  // Right stick drives the OS mouse pointer — works on the dashboard AND
+  // inside a launched app. Emit continuously while deflected.
+  const rightStick = useRef({ x: 0, y: 0 });
+  useEffect(() => {
+    const id = setInterval(() => {
+      const { x, y } = rightStick.current;
+      if (x !== 0 || y !== 0) {
+        sendAction(Actions.MOUSE_MOVE, { dx: x * 14, dy: y * 14 });
+      }
+    }, 33);
+    return () => clearInterval(id);
+  }, []);
+
   return (
     <div
-      className="h-full min-h-[-webkit-fill-available] flex flex-col overflow-hidden gap-2.5 select-none"
+      className="h-full min-h-[-webkit-fill-available] flex flex-col overflow-hidden gap-2 select-none"
       style={{
         padding:
-          "calc(14px + env(safe-area-inset-top, 0px)) 20px calc(14px + env(safe-area-inset-bottom, 0px))",
+          "calc(10px + env(safe-area-inset-top, 0px)) 20px calc(10px + env(safe-area-inset-bottom, 0px))",
         boxSizing: "border-box",
         fontFamily: "'SF Mono', 'Roboto Mono', ui-monospace, monospace",
         WebkitUserSelect: "none",
@@ -215,9 +269,6 @@ export default function RemoteTab() {
         <PadBtn onPress={() => sendAction(Actions.BACK)}>
           <ArrowLeft size={17} />
         </PadBtn>
-        <PadBtn onPress={() => sendAction(Actions.START)}>
-          <Triangle size={17} />
-        </PadBtn>
         <PadBtn onPress={() => sendAction(Actions.MENU)}>
           <Settings size={17} />
         </PadBtn>
@@ -226,9 +277,29 @@ export default function RemoteTab() {
         </PadBtn>
       </div>
 
+      {/* ── Shoulder buttons / triggers ──────────────────────────── */}
+      <div className="flex gap-2">
+        {SHOULDERS.map(([label, btn]) => (
+          <div key={btn} className="flex-1">
+            <PadBtn
+              onPress={() => sendAction(Actions.GP_BUTTON, { button: btn })}
+              extraStyle={{
+                width: "100%",
+                height: 32,
+                fontWeight: 800,
+                fontSize: 12,
+                letterSpacing: 0.5,
+              }}
+            >
+              {label}
+            </PadBtn>
+          </div>
+        ))}
+      </div>
+
       {/* ── Face plate ───────────────────────────────────────────── */}
       <div className="flex-1 min-h-0 flex items-center justify-evenly rounded-[22px] border border-[#1c1c26] shadow-[inset_0_2px_10px_rgba(0,0,0,0.45)] overflow-hidden">
-        {/* D-pad */}
+        {/* D-pad + left stick */}
         <div className="grid grid-cols-3 gap-1.5 items-center justify-items-center">
           {/* row 1 */}
           <div />
@@ -241,8 +312,8 @@ export default function RemoteTab() {
             <ArrowLeft size={18} />
           </PadBtn>
           <Joystick
-            size={50} // slightly larger to fill the space
-            knobSize={20} // matches your button size
+            size={50}
+            knobSize={20}
             accent="#6366f1"
             onMove={(x, y) => sendAction(Actions.CUBE_MOVE, { x, y })}
           />
@@ -259,7 +330,7 @@ export default function RemoteTab() {
 
         <Divider />
 
-        {/* ABXY diamond */}
+        {/* ABXY diamond with the right stick (mouse) in the middle */}
         <div className="grid grid-cols-3 gap-1.5 items-center justify-items-center">
           <div />
 
@@ -292,7 +363,15 @@ export default function RemoteTab() {
             X
           </PadBtn>
 
-          <div className="w-12 h-12" />
+          <Joystick
+            size={50}
+            knobSize={20}
+            accent="#22d3ee"
+            onMove={(x, y) => {
+              rightStick.current = { x, y };
+            }}
+          />
+
           <PadBtn
             onPress={() => sendAction(Actions.B)}
             circle
@@ -326,12 +405,38 @@ export default function RemoteTab() {
         </div>
       </div>
 
+      {/* ── Start / Select ───────────────────────────────────────── */}
+      <div className="flex justify-center gap-3">
+        <PadBtn
+          onPress={() => sendAction(Actions.SELECT)}
+          extraStyle={{
+            width: 84,
+            height: 28,
+            borderRadius: 14,
+            fontWeight: 800,
+            fontSize: 10,
+            letterSpacing: 1,
+          }}
+        >
+          SELECT
+        </PadBtn>
+        <PadBtn
+          onPress={() => sendAction(Actions.START)}
+          extraStyle={{
+            width: 84,
+            height: 28,
+            borderRadius: 14,
+            fontWeight: 800,
+            fontSize: 10,
+            letterSpacing: 1,
+          }}
+        >
+          START
+        </PadBtn>
+      </div>
+
       {/* ── Bottom controls ──────────────────────────────────────── */}
       <div className="flex items-center gap-2 max-h-[15px] mt-2 mb-1">
-        <PadBtn onPress={() => sendAction(Actions.FULLSCREEN)} size={42}>
-          <Maximize size={15} />
-        </PadBtn>
-
         <button
           onClick={() => setMuted((m) => !m)}
           className="bg-transparent border-none px-1 py-[6px] text-[#3c3c50] cursor-pointer flex items-center flex-shrink-0"

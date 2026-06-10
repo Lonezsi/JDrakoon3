@@ -10,8 +10,8 @@ import { syncService } from "./services/SyncService";
 import { authService } from "./services/AuthService";
 import { console } from "inspector";
 import { gameScanner } from "./services/GameScanner";
-import { appLauncher } from "./services/AppLauncher";
-import { spawn, ChildProcess } from "child_process";
+import { settingsService } from "./services/SettingsService";
+import { launchWindowedApp, RunningApp } from "./services/WindowedLauncher";
 
 type RateBucket = { tokens: number; lastRefill: number };
 
@@ -63,7 +63,7 @@ function verifyToken(token?: string) {
 }
 
 export function initSocketIO(server: HttpServer) {
-  let currentAppProcess: ChildProcess | null = null;
+  let currentApp: RunningApp | null = null;
 
   const io = new IOServer(server, {
     cors: { origin: "*" },
@@ -165,6 +165,25 @@ export function initSocketIO(server: HttpServer) {
         buttons: pkt.buttons || {},
         analog: pkt.analog || { x: 0, y: 0 },
       };
+
+      // While an app is running ("fullscreen" focus) the phone keeps working
+      // as a real input device: gamepad buttons are translated into OS key
+      // presses so they reach the foreground app.
+      if (inputService.getFocus() === "fullscreen") {
+        const b = packet.buttons as Record<string, boolean>;
+        if (b.up) inputControl.key("UP");
+        if (b.down) inputControl.key("DOWN");
+        if (b.left) inputControl.key("LEFT");
+        if (b.right) inputControl.key("RIGHT");
+        if (b.a) inputControl.key("ENTER");
+        if (b.b) inputControl.key("ESC");
+        if (b.x) inputControl.key("SPACE");
+        if (b.y) inputControl.key("TAB");
+        if (b.start) inputControl.key("ENTER");
+        if (b.select) inputControl.key("ESC");
+        if (b.l1) inputControl.key("ALTTAB");
+      }
+
       const actions = inputService.processInput(packet as any);
       for (const action of actions) {
         const seq = syncService.recordEvent("action", action);
@@ -188,6 +207,12 @@ export function initSocketIO(server: HttpServer) {
           break;
         case "rclick":
           inputControl.click(true);
+          break;
+        case "mdown":
+          inputControl.mouseDown();
+          break;
+        case "mup":
+          inputControl.mouseUp();
           break;
         case "scroll":
           inputControl.scroll(Number(pkt.dy) || 0);
@@ -374,54 +399,81 @@ export function initSocketIO(server: HttpServer) {
       cb?.({ ok: true, library });
     });
 
+    function watchApp(pid: number) {
+      const interval = setInterval(() => {
+        try {
+          process.kill(pid, 0);
+
+          console.log("alive", pid);
+        } catch {
+          console.log("closed", pid);
+
+          clearInterval(interval);
+
+          currentApp = null;
+
+          io.emit("mode_change", {
+            mode: "normal",
+          });
+
+          io.emit("app_closed");
+        }
+      }, 1000);
+
+      return interval;
+    }
+
     socket.on(
       "launch_app",
-      async (payload: { appId: string; launcher?: string }, cb?: Function) => {
+      (payload: { appId: string; launcher?: string }, cb?: Function) => {
         const exePath = payload.launcher;
         if (!exePath) return cb?.({ ok: false, error: "no_launcher_path" });
 
         try {
-          // Kill any previously launched app
-          if (currentAppProcess) {
-            currentAppProcess.kill();
+          if (currentApp) {
+            currentApp.kill();
+            currentApp = null;
           }
 
-          const proc = spawn(exePath, [], {
-            shell: true,
-            detached: true,
-            stdio: "ignore",
-            windowsHide: false,
-          });
-          proc.unref();
+          // Tell every client a launch is in progress → loading overlay
+          io.to("lobby").emit("app_launching", { appId: payload.appId });
 
-          currentAppProcess = proc;
+          //watchApp(currentApp?.pid ?? -1);
 
-          proc.on("exit", (code) => {
-            logger.info(`App ${payload.appId} exited with code ${code}`);
-            currentAppProcess = null;
-            io.to("lobby").emit("app_closed", { appId: payload.appId, code });
-            inputService.setFocus("menu");
+          currentApp = launchWindowedApp(exePath, {
+            onReady: (focused) => {
+              // Window exists and is foregrounded → safe to swap to the lite page
+              io.to("lobby").emit("app_launched", {
+                appId: payload.appId,
+                focused,
+              });
+              inputService.setFocus("fullscreen");
+            },
+            onExit: (code) => {
+              currentApp = null;
+              io.emit("app_closed", { appId: payload.appId, code });
+              inputService.setFocus("menu");
+            },
           });
 
-          io.to("lobby").emit("app_launched", {
-            appId: payload.appId,
-            name: payload.appId, // fallback
-          });
-          inputService.setFocus("fullscreen");
           cb?.({ ok: true });
         } catch (err) {
           logger.error("Failed to launch app:", err);
+          io.emit("app_closed", { appId: payload.appId });
           cb?.({ ok: false, error: "launch_failed" });
         }
       },
     );
 
-    socket.on("close_app", (cb?: Function) => {
-      if (currentAppProcess) {
-        currentAppProcess.kill();
-        currentAppProcess = null;
+    // Accept both emit("close_app", cb) and emit("close_app", payload, cb)
+    socket.on("close_app", (payloadOrCb?: any, maybeCb?: Function) => {
+      const cb =
+        typeof payloadOrCb === "function" ? payloadOrCb : maybeCb;
+      if (currentApp) {
+        currentApp.kill();
+        currentApp = null;
       }
-      io.to("lobby").emit("app_closed", {});
+      io.emit("app_closed", {});
       inputService.setFocus("menu");
       cb?.({ ok: true });
     });
@@ -548,6 +600,12 @@ export function initSocketIO(server: HttpServer) {
   inputService.subscribeOwnership((target, owner) => {
     const seq = syncService.recordEvent("input:ownership", { target, owner });
     io.to("lobby").emit("input:ownership_updated", { target, owner, seq });
+  });
+
+  // Push settings changes to every client so e.g. the TV's app grid
+  // refreshes live when apps are edited or added.
+  settingsService.subscribe((settings) => {
+    io.emit("settings_updated", { settings });
   });
 
   return io;

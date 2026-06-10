@@ -248,6 +248,63 @@ function EditableArrayInput({
   );
 }
 
+// Editable text field for string settings (app names, launcher paths, …).
+// Values that look like hex colors additionally get a native color picker.
+function EditableStringInput({
+  value,
+  isDefault,
+  onCommit,
+  onReset,
+}: {
+  value: string;
+  isDefault: boolean;
+  onCommit: (v: string) => void;
+  onReset: () => void;
+}) {
+  const [text, setText] = useState(value);
+
+  // Keep in sync when the value changes from elsewhere (reset, other client)
+  useEffect(() => setText(value), [value]);
+
+  const commit = () => {
+    if (text !== value) onCommit(text);
+  };
+
+  const isHexColor = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(text.trim());
+
+  return (
+    <div className="flex items-center gap-2">
+      {isHexColor && (
+        <input
+          type="color"
+          value={text.trim()}
+          onChange={(e) => {
+            setText(e.target.value);
+            onCommit(e.target.value);
+          }}
+          className="w-8 h-8 rounded-lg border border-white/10 bg-transparent cursor-pointer flex-shrink-0"
+          style={{ padding: 0 }}
+        />
+      )}
+      <input
+        type="text"
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        onBlur={commit}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") {
+            e.stopPropagation();
+            commit();
+            (e.target as HTMLInputElement).blur();
+          }
+        }}
+        className="flex-1 min-w-0 bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-xs font-mono text-white outline-none focus:border-indigo-500/40"
+      />
+      {!isDefault && <ResetBtn onReset={onReset} />}
+    </div>
+  );
+}
+
 // ---------- one whole setting = one focus target ----------
 
 function SettingRow({
@@ -267,9 +324,13 @@ function SettingRow({
   onUpdate: (v: any) => void;
   onReset: () => void;
 }) {
-  const isDefault = isValueEqual(value, defaultValue);
+  // Runtime-added entries (e.g. dropped-in apps) have no default — treat
+  // them as "default" so they don't show as modified and can't be reset.
+  const isDefault =
+    defaultValue === undefined ? true : isValueEqual(value, defaultValue);
   const isBoolean = typeof value === "boolean";
   const isNumber = typeof value === "number";
+  const isString = typeof value === "string";
 
   const isVolume = path.toLowerCase().includes("volume");
   const isDeadzone = path.toLowerCase().includes("deadzone");
@@ -339,6 +400,13 @@ function SettingRow({
               onCommit={onUpdate}
               onReset={onReset}
             />
+          ) : isString ? (
+            <EditableStringInput
+              value={value}
+              isDefault={isDefault}
+              onCommit={onUpdate}
+              onReset={onReset}
+            />
           ) : (
             <div className="flex items-center gap-2">
               <span className="text-xs font-mono text-gray-500 break-all">
@@ -394,9 +462,11 @@ export const SettingsModal = React.memo(function SettingsModal({
   const flatCurrent = flattenObject(cleanSettings);
   const flatDefaults = flattenObject(defaults);
 
-  const allPaths = Object.keys(flatDefaults).filter(
-    (path) => !path.startsWith("players"),
-  );
+  // Union of default + current paths so runtime-added entries (apps dropped
+  // onto the dashboard) show up here even though they have no default.
+  const allPaths = Array.from(
+    new Set([...Object.keys(flatDefaults), ...Object.keys(flatCurrent)]),
+  ).filter((path) => !path.startsWith("players"));
 
   const filteredPaths = allPaths.filter(
     (path) =>
@@ -415,7 +485,9 @@ export const SettingsModal = React.memo(function SettingsModal({
   }
 
   const modifiedCount = allPaths.filter(
-    (p) => !isValueEqual(flatCurrent[p], flatDefaults[p]),
+    (p) =>
+      flatDefaults[p] !== undefined &&
+      !isValueEqual(flatCurrent[p], flatDefaults[p]),
   ).length;
 
   // ---------- update / reset ----------

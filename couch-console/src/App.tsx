@@ -27,17 +27,20 @@ function AppController({
   sceneRef,
   remotePlayerIds,
   setRemotePlayers,
+  setAppPhase,
 }: {
   state: AppState;
   sceneRef: React.MutableRefObject<any>;
   remotePlayerIds: Set<string>;
   setRemotePlayers: React.Dispatch<React.SetStateAction<Player[]>>;
+  setAppPhase: React.Dispatch<
+    React.SetStateAction<{ phase: "launching" | "running"; name?: string }>
+  >;
 }) {
   const { move, select, goBack, resetToRoot } = useFocus();
 
   // ── Local input ────────────────────────────────────────────────
   useEffect(() => {
-    const nameCounters = new Map<string, number>();
     const colorPalette = [
       "#6366f1",
       "#ec4899",
@@ -48,18 +51,22 @@ function AppController({
       "#8b5cf6",
       "#f97316",
     ];
-    let colorIndex = 0;
-
+    // Derive the name from the device id — a counter resets whenever this
+    // effect re-runs, which made both keyboards "Keyboard 1".
+    function displayName(playerId: string) {
+      if (playerId === "AWSD") return "Keyboard 1";
+      if (playerId === "UHJK") return "Keyboard 2";
+      if (playerId.startsWith("gp"))
+        return `Controller ${(parseInt(playerId.slice(2), 10) || 0) + 1}`;
+      return playerId;
+    }
     function ensurePlayerExists(playerId: string) {
       if (playerManager.players.find((p) => p.id === playerId)) return;
-      let baseName = "Player";
-      if (playerId.startsWith("p")) baseName = "P";
-      else if (playerId.startsWith("gp")) baseName = "GP";
-      const count = (nameCounters.get(baseName) ?? 0) + 1;
-      nameCounters.set(baseName, count);
-      const name = `${baseName}${count}`;
-      const color = colorPalette[colorIndex % colorPalette.length];
-      colorIndex++;
+      const name = displayName(playerId);
+      // Random palette pick — a sequential index resets whenever this effect
+      // re-runs, which made every player the same color.
+      const color =
+        colorPalette[Math.floor(Math.random() * colorPalette.length)];
       const newPlayer: Player = {
         id: playerId,
         name,
@@ -81,15 +88,26 @@ function AppController({
           action.value &&
           typeof action.value !== "boolean"
         ) {
-          ensurePlayerExists(action.playerId);
           const moveValue = action.value as { x: number; y: number };
-          movedIds.add(action.playerId);
-          const speed = 8;
-          sceneRef.current?.setPlayerInput(
-            action.playerId,
-            moveValue.x * speed,
-            moveValue.y * speed,
+          const moving = moveValue.x !== 0 || moveValue.y !== 0;
+          // A cube only joins the lobby once its owner actually presses a
+          // movement key — not on boot.
+          if (moving) ensurePlayerExists(action.playerId);
+          const exists = playerManager.players.some(
+            (p) => p.id === action.playerId,
           );
+          if (exists) {
+            movedIds.add(action.playerId);
+            const speed = 8;
+            sceneRef.current?.setPlayerInput(
+              action.playerId,
+              moveValue.x * speed,
+              moveValue.y * speed,
+            );
+          }
+        } else if (action.type === "jump" && action.playerId) {
+          ensurePlayerExists(action.playerId);
+          sceneRef.current?.jump(action.playerId);
         } else if (action.type === "navigate") {
           const dir = (action.value as { direction: string } | undefined)
             ?.direction;
@@ -130,9 +148,20 @@ function AppController({
 
     const unsub = subscribe((msg) => {
       switch (msg.type) {
+        case "app_launching": {
+          // covers launches triggered by other clients (e.g. phone)
+          setAppPhase({ phase: "launching", name: msg.appId });
+          appState.transition("APP_RUNNING");
+          break;
+        }
         case "app_launched": {
-          notifService.push(`Launched ${msg.name || msg.appId}`);
-          window.location.href = "/app-running";
+          // Stay in the React app — no page swap. The 3D renderer is paused
+          // while APP_RUNNING, which gives the same perf win as the old
+          // /app-running page without the reload jank.
+          setAppPhase((prev) => ({ phase: "running", name: prev.name }));
+          if (appState.current !== "APP_RUNNING") {
+            appState.transition("APP_RUNNING");
+          }
           break;
         }
         case "app_closed": {
@@ -190,6 +219,8 @@ function AppController({
             select();
           } else if (action.type === "back") {
             goBack();
+          } else if (action.type === "jump" && action.playerId) {
+            sceneRef.current?.jump(action.playerId);
           }
           break;
         }
@@ -222,9 +253,8 @@ function AppController({
 
     return () => {
       unsub();
-      socket?.disconnect();
     };
-  }, [state, move, select, goBack, resetToRoot, setRemotePlayers]);
+  }, [state, move, select, goBack, resetToRoot, setRemotePlayers, setAppPhase]);
 
   return null;
 }
@@ -233,6 +263,10 @@ function AppController({
 export default function App() {
   const [state, setState] = useState<AppState>("BOOT");
   const [remotePlayers, setRemotePlayers] = useState<Player[]>([]);
+  const [appPhase, setAppPhase] = useState<{
+    phase: "launching" | "running";
+    name?: string;
+  }>({ phase: "launching" });
 
   const remotePlayerIds = useMemo(
     () => new Set(remotePlayers.map((p) => p.id)),
@@ -274,6 +308,13 @@ export default function App() {
     };
   }, [sceneRef]);
 
+  // While an app is running, freeze the 3D scene (physics + GPU) so the
+  // machine's resources go to the launched app — same win as the old
+  // lightweight page, without the page-reload jank.
+  useEffect(() => {
+    sceneRef.current?.setPaused(state === "APP_RUNNING");
+  }, [state, sceneRef]);
+
   if (state === "BOOT") return <BootScreen />;
 
   return (
@@ -288,6 +329,7 @@ export default function App() {
           sceneRef={sceneRef}
           remotePlayerIds={remotePlayerIds}
           setRemotePlayers={setRemotePlayers}
+          setAppPhase={setAppPhase}
         />
         <div
           className={`h-full transition-all duration-700 ${
@@ -298,7 +340,9 @@ export default function App() {
         >
           <DashboardLayout clock={clock} players={allPlayers} />
         </div>
-        {state === "APP_RUNNING" && <AppRunningOverlay />}
+        {state === "APP_RUNNING" && (
+          <AppRunningOverlay phase={appPhase.phase} appName={appPhase.name} />
+        )}
       </FocusProvider>
       <Notifications />
       <PhoneQR />

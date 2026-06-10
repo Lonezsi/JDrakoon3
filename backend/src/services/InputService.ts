@@ -36,6 +36,10 @@ class InputService {
     this.currentFocus = focus;
   }
 
+  getFocus() {
+    return this.currentFocus;
+  }
+
   // Claim control for a target (e.g., 'menu', 'fullscreen', 'app:xyz')
   claim(playerId: string, target: string, ttl = 30000, priority = 0) {
     const now = Date.now();
@@ -114,6 +118,7 @@ class InputService {
         actions.push({ type: "navigate", playerId, direction: "right" });
       if (buttons.a) actions.push({ type: "confirm", playerId });
       if (buttons.b) actions.push({ type: "back", playerId });
+      if (buttons.x) actions.push({ type: "jump", playerId });
       if (buttons.start) actions.push({ type: "home", playerId });
     } else if (this.currentFocus === "lobby") {
       if (buttons.a) actions.push({ type: "jump", playerId });

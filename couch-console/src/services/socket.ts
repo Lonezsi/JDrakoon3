@@ -33,7 +33,10 @@ export function connect(
       ":" +
       backendPort;
 
-  if (socket) return socket;
+  if (socket) {
+    if (!socket.connected) socket.connect(); // re-fires "connect" → re-joins
+    return socket;
+  }
 
   socket = io(wsUrl, {
     auth: { token: opts.token },
@@ -66,6 +69,12 @@ export function connect(
     "input:event",
     "queue_add_failed",
     "video_error",
+    // app lifecycle — without these the console never hears about launches,
+    // so it was never redirected to /app-running
+    "app_launching",
+    "app_launched",
+    "app_closed",
+    "settings_updated",
   ];
   events.forEach((event) => {
     socket!.on(event, (payload: any) => notify({ type: event, ...payload }));

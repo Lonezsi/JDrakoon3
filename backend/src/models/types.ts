@@ -44,11 +44,23 @@ export interface AppEntry {
   category: string;
 }
 
+/** A launchable app tile on the TV dashboard, editable from Settings. */
+export interface AppConfig {
+  name: string;
+  /** Exe path or protocol URI (steam:// …). Empty = tile is a placeholder. */
+  launcher: string;
+  /** Accent color (hex). */
+  hex: string;
+  /** Lucide icon name (e.g. "Gamepad2", "Video"). Unknown → letter tile. */
+  icon: string;
+}
+
 export interface Settings {
   display: { fullscreen: boolean; crtEffect: boolean; volume: number };
   media: { defaultVolume: number; cacheLimitGB: number; preloadNext: boolean };
   input: { deadzone: number; repeatDelay: number; repeatInterval: number };
   autoupdate: AutoUpdateSettings;
+  apps: Record<string, AppConfig>;
   players: { name: string; color: string }[];
   libraryFolders: string[];
 }

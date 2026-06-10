@@ -37,6 +37,8 @@ public static class NativeInput {
     else { mouse_event(LEFTDOWN,0,0,0,IntPtr.Zero); mouse_event(LEFTUP,0,0,0,IntPtr.Zero); }
   }
   public static void Scroll(int amount) { mouse_event(WHEEL,0,0,(uint)amount,IntPtr.Zero); }
+  public static void LeftDown() { mouse_event(LEFTDOWN,0,0,0,IntPtr.Zero); }
+  public static void LeftUp() { mouse_event(LEFTUP,0,0,0,IntPtr.Zero); }
   public static void Tap(byte vk) { keybd_event(vk,0,0,IntPtr.Zero); keybd_event(vk,0,KEYUP,IntPtr.Zero); }
   public static void Down(byte vk) { keybd_event(vk,0,0,IntPtr.Zero); }
   public static void Up(byte vk) { keybd_event(vk,0,KEYUP,IntPtr.Zero); }
@@ -62,6 +64,8 @@ while (($line = [Console]::In.ReadLine()) -ne $null) {
       'M' { $p = $rest.Split(' '); [NativeInput]::Move([int]$p[0], [int]$p[1]) }
       'C' { [NativeInput]::Click($false) }
       'R' { [NativeInput]::Click($true) }
+      'D' { [NativeInput]::LeftDown() }
+      'U' { [NativeInput]::LeftUp() }
       'S' { [NativeInput]::Scroll([int]$rest) }
       'K' {
         switch ($rest) {
@@ -70,6 +74,12 @@ while (($line = [Console]::In.ReadLine()) -ne $null) {
           'WIN'       { [NativeInput]::Tap(0x5B) }
           'BACKSPACE' { [NativeInput]::Tap(0x08) }
           'ALTTAB'    { [NativeInput]::Down(0x12); [NativeInput]::Tap(0x09); [NativeInput]::Up(0x12) }
+          'UP'        { [NativeInput]::Tap(0x26) }
+          'DOWN'      { [NativeInput]::Tap(0x28) }
+          'LEFT'      { [NativeInput]::Tap(0x25) }
+          'RIGHT'     { [NativeInput]::Tap(0x27) }
+          'SPACE'     { [NativeInput]::Tap(0x20) }
+          'TAB'       { [NativeInput]::Tap(0x09) }
         }
       }
       'T' { Send-Text ($enc.GetString([Convert]::FromBase64String($rest))) }
@@ -156,6 +166,15 @@ class InputControlService {
     this.write(right ? "R" : "C");
   }
 
+  /** Hold / release the left button — used for touch click-and-drag. */
+  mouseDown() {
+    this.write("D");
+  }
+
+  mouseUp() {
+    this.write("U");
+  }
+
   scroll(amount: number) {
     if (amount !== 0) this.write(`S ${Math.round(amount)}`);
   }
@@ -167,6 +186,12 @@ class InputControlService {
     else if (k === "WIN") this.write("K WIN");
     else if (k === "ALTTAB") this.write("K ALTTAB");
     else if (k === "BACKSPACE" || k === "BKSP") this.write("K BACKSPACE");
+    else if (k === "UP" || k === "ARROWUP") this.write("K UP");
+    else if (k === "DOWN" || k === "ARROWDOWN") this.write("K DOWN");
+    else if (k === "LEFT" || k === "ARROWLEFT") this.write("K LEFT");
+    else if (k === "RIGHT" || k === "ARROWRIGHT") this.write("K RIGHT");
+    else if (k === "SPACE") this.write("K SPACE");
+    else if (k === "TAB") this.write("K TAB");
     // unknown key names are ignored
   }
 

@@ -118,7 +118,7 @@ $startTime = Get-Date
 $ready = $false
 while ((Get-Date) - $startTime -lt [TimeSpan]::FromSeconds($maxWait)) {
     try {
-        $r = Invoke-WebRequest -Uri "http://localhost:3001" -Method Head -TimeoutSec 2 -ErrorAction Stop
+        $r = Invoke-WebRequest -Uri "http://localhost:3001" -UseBasicParsing -Method Head -TimeoutSec 2 -ErrorAction Stop
         if ($r.StatusCode -eq 200) { $ready = $true; break }
     } catch { Start-Sleep -Milliseconds 800 }
 }

@@ -13,6 +13,33 @@ export const defaultSettings: Settings = {
     remindMeAboutUpdate: true,
     updateSilently: false,
   },
+  apps: {
+    notepad: {
+      name: "Notepad",
+      launcher: "C:\\Windows\\System32\\notepad.exe",
+      hex: "#16a34a",
+      icon: "NotebookPen",
+    },
+    steam: {
+      name: "Steam",
+      launcher: "steam://",
+      hex: "#2563eb",
+      icon: "Gamepad2",
+    },
+    youtube: {
+      name: "YouTube TV",
+      launcher: "youtube://",
+      hex: "#dc2626",
+      icon: "Video",
+    },
+    plex: { name: "Plex", launcher: "", hex: "#eab308", icon: "Tv" },
+    retroarch: {
+      name: "RetroArch",
+      launcher: "",
+      hex: "#475569",
+      icon: "Gamepad",
+    },
+  },
   players: [],
   libraryFolders: [
     "C:\\Program Files (x86)\\Steam\\steamapps\\common",

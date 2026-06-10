@@ -14,7 +14,7 @@ export interface Player {
 }
 
 export interface DeviceAction {
-  type: "move" | "navigate" | "confirm" | "back";
+  type: "move" | "navigate" | "confirm" | "back" | "jump";
   playerId?: string;
   deviceId: string;
   deviceType: "keyboard" | "gamepad" | "phone";
@@ -30,8 +30,10 @@ export interface AppDefinition {
   id: string;
   name: string;
   launcher?: string;
-  icon: React.ReactNode;
-  color: string;
+  /** Lucide icon name; unknown/missing renders a letter tile instead. */
+  icon?: string;
+  /** Optional tailwind class; settings-driven apps style via hex. */
+  color?: string;
   hex: string;
 }
 

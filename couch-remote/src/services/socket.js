@@ -81,17 +81,26 @@ export function connect(url, opts = {}) {
   socket.on("disconnect", () => notify({ type: "disconnect" }));
 
   // set transport for inputActions
+  let lastMoveSent = 0;
   setTransport((action) => {
     if (!socket || !socket.connected) return;
     const { type, payload } = action;
 
     switch (type) {
       // ── Cube movement (joystick) ──
-      case "CUBE_MOVE":
-        socket.emit("input:event", {
-          analog: { x: payload?.x ?? 0, y: payload?.y ?? 0 },
-        });
+      case "CUBE_MOVE": {
+        const x = payload?.x ?? 0;
+        const y = payload?.y ?? 0;
+        // Throttle the touch-frequency stream to ~20/s so the backend's
+        // rate limiter (30/s) never runs dry — when it did, the final 0,0
+        // release packet got dropped and the cube kept moving forever.
+        // Zero (release) packets always pass.
+        const now = Date.now();
+        if ((x !== 0 || y !== 0) && now - lastMoveSent < 50) break;
+        lastMoveSent = now;
+        socket.emit("input:event", { analog: { x, y } });
         break;
+      }
 
       // ── A / B / X / Y ──
       case "A":
@@ -142,7 +151,16 @@ export function connect(url, opts = {}) {
         socket.emit("action", { type: "power" });
         break;
       case "START":
-        socket.emit("action", { type: "start" });
+        socket.emit("input:event", { buttons: { start: true } });
+        break;
+      case "SELECT":
+        socket.emit("input:event", { buttons: { select: true } });
+        break;
+      // Generic gamepad buttons (l1/l2/r1/r2 …) — forwarded as-is; the
+      // backend maps them per focus mode.
+      case "GP_BUTTON":
+        if (payload?.button)
+          socket.emit("input:event", { buttons: { [payload.button]: true } });
         break;
 
       // ── Touchpad: OS mouse / keyboard control ─────────────
@@ -158,6 +176,12 @@ export function connect(url, opts = {}) {
         break;
       case "MOUSE_RIGHT_CLICK":
         socket.emit("control", { kind: "rclick" });
+        break;
+      case "MOUSE_DOWN":
+        socket.emit("control", { kind: "mdown" });
+        break;
+      case "MOUSE_UP":
+        socket.emit("control", { kind: "mup" });
         break;
       case "SCROLL":
         // Two-finger drag delta (px) → wheel notches; invert for natural scroll.
