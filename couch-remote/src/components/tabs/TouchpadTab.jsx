@@ -119,7 +119,9 @@ export default function TouchpadTab() {
           sendAction(Actions.MOUSE_DOWN);
           try {
             navigator.vibrate?.(30);
-          } catch {}
+          } catch {
+            console.warn("Vibration API error");
+          }
         }
       }, HOLD_MS);
     }
