@@ -4,15 +4,15 @@ A couch-gaming console: a TV dashboard you drive with a gamepad, arrow keys, or
 your phone as a wireless remote. Launch apps, queue videos, and mess around in a
 shared 3D lobby.
 
-> Status: **Pre-Alpha**. Things move around.
+> Status: **Alpha**. Things move around.
 
 ## Packages
 
-| Folder           | What it is                          | Dev port | Stack                          |
-| ---------------- | ----------------------------------- | -------- | ------------------------------ |
-| `backend/`       | Node server: HTTP API + Socket.IO relay + video queue | `3001`   | Express, Socket.IO, TypeScript |
-| `couch-console/` | The TV UI (the "console")           | `5173`   | React, Vite, Three.js, Tailwind |
-| `couch-remote/`  | The phone remote (gamepad webapp)   | `5174`   | React, Vite, Tailwind          |
+| Folder           | What it is                                            | Dev port | Stack                           |
+| ---------------- | ----------------------------------------------------- | -------- | ------------------------------- |
+| `backend/`       | Node server: HTTP API + Socket.IO relay + video queue | `3001`   | Express, Socket.IO, TypeScript  |
+| `couch-console/` | The TV UI (the "console")                             | `5173`   | React, Vite, Three.js, Tailwind |
+| `couch-remote/`  | The phone remote (gamepad webapp)                     | `5174`   | React, Vite, Tailwind           |
 
 In a production build the two frontends are bundled into `backend/frontend-build`
 and served by the backend: the console at `/` and the phone remote at `/phone`.
@@ -41,10 +41,10 @@ shown on the console (bottom-right) to open `http://<console-ip>:3001/phone`.
 ## Architecture at a glance
 
 ```
-┌────────────┐   input:event / action / media_*   ┌─────────────┐
+┌─────────────┐   input:event / action / media_*    ┌─────────────┐
 │ couch-remote│ ─────────────────────────────────▶ │   backend   │
-│   (phone)   │ ◀───────  lobby_state, etc. ─────── │  Socket.IO  │
-└────────────┘                                      └──────┬──────┘
+│   (phone)   │ ◀───────  lobby_state, etc. ───────│  Socket.IO  │
+└─────────────┘                                     └──────┬──────┘
                                                            │ broadcast to "lobby" room
                                                            ▼
                                                     ┌─────────────┐
@@ -80,11 +80,11 @@ Phone input takes a longer path:
 3. The backend's [`InputService.processInput`](backend/src/services/InputService.ts)
    converts buttons into **semantic actions, gated by the current focus mode**:
 
-   | Focus mode   | up/down/left/right | A         | B      | start  |
-   | ------------ | ------------------ | --------- | ------ | ------ |
-   | `menu` (default) | `navigate`     | `confirm` | `back` | `home` |
-   | `lobby`      | (ignored)          | `jump`    | —      | —      |
-   | `fullscreen` | raw `gamepad_input`| —         | —      | —      |
+   | Focus mode       | up/down/left/right  | A         | B      | start  |
+   | ---------------- | ------------------- | --------- | ------ | ------ |
+   | `menu` (default) | `navigate`          | `confirm` | `back` | `home` |
+   | `lobby`          | (ignored)           | `jump`    | —      | —      |
+   | `fullscreen`     | raw `gamepad_input` | —         | —      | —      |
 
 4. The backend broadcasts each action to the `"lobby"` room as an `action` event.
 5. The console receives it in [`App.tsx`](couch-console/src/App.tsx) and calls the

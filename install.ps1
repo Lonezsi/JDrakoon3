@@ -1,6 +1,4 @@
-# JDrakoon3 Installer
-# Run from the folder containing backend/, couch-console/, couch-remote/
-
+# JDrakoon3 Installer – self‑contained, works from an empty folder
 $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent $MyInvocation.MyCommand.Path
 Set-Location $root
@@ -30,7 +28,14 @@ try {
     exit 1
 }
 
-# 3. Install dependencies
+# 3. Clone the repo if we're not already inside it
+if (-not (Test-Path "backend\package.json")) {
+    Write-Host "Cloning JDrakoon3 from GitHub..." -ForegroundColor Yellow
+    git clone https://github.com/Lonezsi/JDrakoon3.git .
+    Write-Host "Repository cloned." -ForegroundColor Green
+}
+
+# 4. Install dependencies
 Write-Host "Installing backend dependencies..." -ForegroundColor Yellow
 Set-Location backend
 npm install
@@ -46,7 +51,7 @@ Set-Location couch-remote
 npm install
 Set-Location ..
 
-# 4. Build frontends
+# 5. Build frontends
 Write-Host "Building TV frontend..." -ForegroundColor Yellow
 Set-Location couch-console
 npm run build
@@ -57,7 +62,7 @@ Set-Location couch-remote
 npm run build
 Set-Location ..
 
-# 5. Copy builds
+# 6. Copy builds
 $frontendBuild = "backend\frontend-build"
 Remove-Item -Recurse -Force $frontendBuild -ErrorAction SilentlyContinue
 New-Item -ItemType Directory -Path "$frontendBuild\phone" -Force | Out-Null
@@ -67,7 +72,7 @@ Copy-Item -Recurse -Force "couch-remote\dist\*" "$frontendBuild\phone"
 
 Write-Host "Frontends built and copied." -ForegroundColor Green
 
-# 6. Generate update secret
+# 7. Generate update secret
 $secret = -join ((48..57) + (65..90) + (97..122) | Get-Random -Count 16 | ForEach-Object { [char]$_ })
 $envFile = "backend\.env"
 @"
@@ -75,7 +80,7 @@ UPDATE_SECRET=$secret
 "@ | Out-File -FilePath $envFile -Encoding utf8
 Write-Host "Update secret saved to $envFile" -ForegroundColor Green
 
-# 7. Create desktop shortcut to start.ps1
+# 8. Create desktop shortcut to start.ps1
 $shortcutPath = [Environment]::GetFolderPath("Desktop") + "\JDrakoon3.lnk"
 $WScriptShell = New-Object -ComObject WScript.Shell
 $Shortcut = $WScriptShell.CreateShortcut($shortcutPath)

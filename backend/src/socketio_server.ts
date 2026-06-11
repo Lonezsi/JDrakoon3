@@ -8,7 +8,7 @@ import { inputService } from "./services/InputService";
 import { inputControl } from "./services/InputControlService";
 import { syncService } from "./services/SyncService";
 import { authService } from "./services/AuthService";
-import { console } from "inspector";
+//import { console } from "inspector";
 import { gameScanner } from "./services/GameScanner";
 import { settingsService } from "./services/SettingsService";
 import { launchWindowedApp, RunningApp } from "./services/WindowedLauncher";
@@ -404,9 +404,9 @@ export function initSocketIO(server: HttpServer) {
         try {
           process.kill(pid, 0);
 
-          console.log("alive", pid);
+          //console.log("alive", pid);
         } catch {
-          console.log("closed", pid);
+          //console.log("closed", pid);
 
           clearInterval(interval);
 
@@ -467,8 +467,7 @@ export function initSocketIO(server: HttpServer) {
 
     // Accept both emit("close_app", cb) and emit("close_app", payload, cb)
     socket.on("close_app", (payloadOrCb?: any, maybeCb?: Function) => {
-      const cb =
-        typeof payloadOrCb === "function" ? payloadOrCb : maybeCb;
+      const cb = typeof payloadOrCb === "function" ? payloadOrCb : maybeCb;
       if (currentApp) {
         currentApp.kill();
         currentApp = null;

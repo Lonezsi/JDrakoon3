@@ -125,9 +125,7 @@ export function TopBar({ clock, players }: TopBarProps) {
 
   // ── Render ─────────────────────────────────────────────────────
   return (
-    <div
-      className="flex justify-between items-start mb-2"
-    >
+    <div className="flex justify-between items-start mb-2">
       <div className="flex items-center gap-4">
         <div className="w-12 h-12 bg-indigo-600 rounded-2xl flex items-center justify-center shadow-lg shadow-indigo-500/40 flex-shrink-0">
           <img src="drakoon.svg" alt="Drakoon" />
@@ -139,7 +137,7 @@ export function TopBar({ clock, players }: TopBarProps) {
               {appVersion === "0.0.0" ? "dev" : "v" + appVersion}
             </span>
             <span className="px-2.5 py-1 bg-red-500 rounded text-[10px] font-black uppercase tracking-wider">
-              Pre-Alpha
+              Alpha!
             </span>
             {updateStatus === "available" && (
               <span className="px-2.5 py-1 bg-yellow-600 rounded text-[10px] font-black uppercase tracking-wider animate-pulse">
