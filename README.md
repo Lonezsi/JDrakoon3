@@ -6,6 +6,32 @@ shared 3D lobby.
 
 > Status: **Alpha**. Things move around.
 
+## Install (for players)
+
+Grab the latest build from the
+[**Releases page**](https://github.com/Lonezsi/JDrakoon3/releases/latest). Two options:
+
+- **Installer (recommended):** download **`JDrakoon3-Setup.exe`** and run it. It's a
+  per-user install — **no admin prompt** — into `%LOCALAPPDATA%\Programs\JDrakoon3`,
+  with Start Menu (and optional desktop) shortcuts and a clean uninstaller.
+- **Portable:** download **`JDrakoon3-portable.zip`**, unzip it anywhere **writable**
+  (your user folder, Desktop, a USB stick — *not* inside `Program Files`), and run
+  `JDrakoon3.exe`.
+
+Then just launch **JDrakoon3** — it starts everything and opens the dashboard
+fullscreen. No console window, nothing to configure.
+
+**Requirements:** 64-bit Windows 10/11 with **Microsoft Edge** (the fullscreen
+kiosk; without it the dashboard opens in your default browser). .NET Framework 4
+and everything else are already built into Windows — there's nothing else to install.
+
+**Auto-update:** on launch the app checks the GitHub Releases page; if a newer
+version is published it downloads the installer, updates silently, and relaunches
+itself. Logs live at `%LOCALAPPDATA%\JDrakoon3\launcher.log`.
+
+To quit: use the in-app **Shutdown** button, or press **Alt+F4** to exit the kiosk —
+either way the background server is stopped cleanly.
+
 ## Packages
 
 | Folder           | What it is                                            | Dev port | Stack                           |
@@ -37,6 +63,31 @@ make kill      # free ports 3000 3001 5173 5174
 
 The phone connects to the backend over Socket.IO on port `3001`. Scan the QR code
 shown on the console (bottom-right) to open `http://<console-ip>:3001/phone`.
+
+## Building a release (for maintainers)
+
+The shippable app is a tiny C# launcher ([`launcher.cs`](launcher.cs)) compiled to a
+GUI-subsystem `.exe` (no console, Drakoon icon embedded at compile time via the
+built-in `csc.exe`). It bundles `node.exe` and the prebuilt backend + frontends, so
+end users build/install **nothing** — the exe never compiles at startup.
+
+```powershell
+# Full portable build -> .\release\  (zip it as JDrakoon3-portable.zip)
+powershell -ExecutionPolicy Bypass -File .\build-release.ps1
+
+powershell -ExecutionPolicy Bypass -File .\build-release.ps1 -SkipBuild   # repackage only (skip npm builds)
+powershell -ExecutionPolicy Bypass -File .\build-release.ps1 -Installer   # also build the installer
+```
+
+`-Installer` runs [Inno Setup](https://jrsoftware.org/isdl.php) on
+[`installer.iss`](installer.iss) and produces `release\installer\JDrakoon3-Setup.exe`.
+
+**Publishing an update:** bump the [`VERSION`](VERSION) file (and the matching
+`MyAppVersion` in `installer.iss` / `AssemblyFileVersion` in `launcher.cs`), build,
+then create a **GitHub release** whose tag is the new version (e.g. `v3.0.2`) and
+attach **`JDrakoon3-Setup.exe`** as an asset. Installed clients pick it up
+automatically on their next launch (the launcher matches an asset named `…Setup.exe`
+against the local `VERSION`).
 
 ## Architecture at a glance
 

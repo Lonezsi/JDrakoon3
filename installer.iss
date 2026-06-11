@@ -27,6 +27,11 @@ DefaultDirName={localappdata}\Programs\{#MyAppName}
 DefaultGroupName={#MyAppName}
 DisableProgramGroupPage=yes
 PrivilegesRequired=lowest
+; Lets the silent auto-updater replace a running copy cleanly. Must match the
+; mutex name created in launcher.cs.
+AppMutex=JDrakoon3_Launcher
+CloseApplications=yes
+RestartApplications=no
 OutputDir=release\installer
 OutputBaseFilename=JDrakoon3-Setup
 SetupIconFile=drakoon.ico
@@ -51,7 +56,8 @@ Name: "{group}\Uninstall {#MyAppName}"; Filename: "{uninstallexe}"
 Name: "{autodesktop}\{#MyAppName}";  Filename: "{app}\{#MyAppExe}"; IconFilename: "{app}\drakoon.ico"; Tasks: desktopicon
 
 [Run]
-Filename: "{app}\{#MyAppExe}"; Description: "Launch {#MyAppName}"; Flags: nowait postinstall skipifsilent
+; No "skipifsilent" so the silent auto-updater relaunches the new version too.
+Filename: "{app}\{#MyAppExe}"; Description: "Launch {#MyAppName}"; Flags: nowait postinstall
 
 [UninstallDelete]
 ; Remove the per-user runtime data (logs, edge profile) created at runtime.
