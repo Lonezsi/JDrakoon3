@@ -15,7 +15,7 @@ Grab the latest build from the
   per-user install — **no admin prompt** — into `%LOCALAPPDATA%\Programs\JDrakoon3`,
   with Start Menu (and optional desktop) shortcuts and a clean uninstaller.
 - **Portable:** download **`JDrakoon3-portable.zip`**, unzip it anywhere **writable**
-  (your user folder, Desktop, a USB stick — *not* inside `Program Files`), and run
+  (your user folder, Desktop, a USB stick — _not_ inside `Program Files`), and run
   `JDrakoon3.exe`.
 
 Then just launch **JDrakoon3** — it starts everything and opens the dashboard
