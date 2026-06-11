@@ -56,7 +56,18 @@ export default function TouchpadTab() {
   const [inputText, setInputText] = useState("");
   const [twoFinger, setTwoFinger] = useState(false);
   const [dragging, setDragging] = useState(false);
+  const [ripples, setRipples] = useState([]); // instant visual feedback on touch
+  const rippleId = useRef(0);
   const touchRef = useRef(null);
+
+  const spawnRipple = (clientX, clientY) => {
+    const el = touchRef.current;
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    const id = ++rippleId.current;
+    setRipples((rs) => [...rs, { id, x: clientX - r.left, y: clientY - r.top }]);
+    setTimeout(() => setRipples((rs) => rs.filter((p) => p.id !== id)), 450);
+  };
   // Gesture state lives in a ref — touch events fire too fast for setState.
   const gesture = useRef({
     lastX: 0,
@@ -84,14 +95,21 @@ export default function TouchpadTab() {
   };
 
   const sendText = () => {
-    if (inputText.trim()) {
+    const v = inputText.trim();
+    if (!v) return;
+    // A leading "." turns the line into a key combo: ".ctrl c" -> Ctrl+C,
+    // ".alt f4" -> Alt+F4. Otherwise it's typed as literal text.
+    if (v.startsWith(".")) {
+      sendAction(Actions.KEY_COMBO, { combo: v.slice(1).trim() });
+    } else {
       sendAction(Actions.TEXT_INPUT, { text: inputText });
-      setInputText("");
     }
+    setInputText("");
   };
 
   const handleTouchStart = (e) => {
     const g = gesture.current;
+    if (e.touches[0]) spawnRipple(e.touches[0].clientX, e.touches[0].clientY);
     if (e.touches.length >= 2) {
       setTwoFinger(true);
       // a second finger means scroll/right-click — abandon any pending hold
@@ -185,20 +203,38 @@ export default function TouchpadTab() {
         onTouchEnd={handleTouchEnd}
         onTouchMove={handleTouchMove}
         onClick={handleTap}
-        className={`flex-1 rounded-3xl border-2 border-dashed flex items-center justify-center font-bold text-sm transition-colors select-none ${
+        className={`relative overflow-hidden flex-1 rounded-3xl border-2 border-dashed flex items-center justify-center font-bold text-sm transition-colors select-none ${
           dragging
             ? "border-indigo-400/60 text-indigo-300 bg-indigo-500/10"
             : "border-white/10 text-slate-700 active:bg-white/5"
         }`}
         style={{ background: dragging ? undefined : "rgba(255,255,255,0.02)" }}
       >
-        <span>
+        <span className="pointer-events-none">
           {dragging
             ? "Dragging — release to drop"
             : twoFinger
               ? "Two‑finger (scroll / right‑click)"
               : "Drag to move · Tap to click · Hold to grab"}
         </span>
+        {ripples.map((r) => (
+          <span
+            key={r.id}
+            className="rv-ripple pointer-events-none absolute rounded-full"
+            style={{ left: r.x, top: r.y }}
+          />
+        ))}
+        <style>{`
+          .rv-ripple {
+            width: 14px; height: 14px; margin: -7px 0 0 -7px;
+            background: rgba(99,102,241,0.55);
+            transform: scale(0.4); opacity: 0.6;
+            animation: rvRipple 0.45s ease-out forwards;
+          }
+          @keyframes rvRipple {
+            to { transform: scale(4); opacity: 0; }
+          }
+        `}</style>
       </div>
 
       <div className="flex flex-col landscape:flex-row gap-2">
@@ -230,7 +266,7 @@ export default function TouchpadTab() {
             value={inputText}
             onChange={(e) => setInputText(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && sendText()}
-            placeholder="Type to send to TV…"
+            placeholder="Type to send · .ctrl c for a combo"
             className="flex-1 rounded-xl px-3 py-2.5 text-xs font-bold outline-none"
             style={{
               background: "rgba(255,255,255,0.05)",

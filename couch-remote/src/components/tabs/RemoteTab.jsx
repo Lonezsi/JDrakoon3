@@ -213,16 +213,22 @@ export default function RemoteTab() {
   const [muted, setMuted] = useState(false);
   const currentVol = muted ? 0 : vol;
 
-  // Right stick drives the OS mouse pointer — works on the dashboard AND
-  // inside a launched app. Emit continuously while deflected.
+  // Right stick spins your cube in the lobby. Emit continuously while
+  // deflected, and once more on release so the spin command reaches 0.
   const rightStick = useRef({ x: 0, y: 0 });
+  const spinWasActive = useRef(false);
   useEffect(() => {
     const id = setInterval(() => {
       const { x, y } = rightStick.current;
-      if (x !== 0 || y !== 0) {
-        sendAction(Actions.MOUSE_MOVE, { dx: x * 14, dy: y * 14 });
+      const active = x !== 0 || y !== 0;
+      if (active) {
+        sendAction(Actions.CUBE_SPIN, { x, y });
+        spinWasActive.current = true;
+      } else if (spinWasActive.current) {
+        sendAction(Actions.CUBE_SPIN, { x: 0, y: 0 });
+        spinWasActive.current = false;
       }
-    }, 33);
+    }, 50);
     return () => clearInterval(id);
   }, []);
 

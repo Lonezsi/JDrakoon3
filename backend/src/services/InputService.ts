@@ -16,6 +16,8 @@ export type InputPacket = {
     select: boolean;
   };
   analog: { x: number; y: number };
+  /** Right-stick rotation for the lobby cube (optional). */
+  spin?: { x: number; y: number };
 };
 
 type Ownership = { ownerId: string; expiresAt: number; priority?: number };
@@ -106,6 +108,17 @@ class InputService {
     let dx = analog.x;
     let dy = analog.y;
     actions.push({ type: "move", playerId, dx, dy });
+
+    // Right-stick rotation — independent of focus; the lobby cube exists in all
+    // modes, so always relay spin (the console applies it as angular velocity).
+    if (packet.spin) {
+      actions.push({
+        type: "spin",
+        playerId,
+        sx: packet.spin.x || 0,
+        sy: packet.spin.y || 0,
+      });
+    }
 
     if (this.currentFocus === "menu") {
       if (buttons.up)

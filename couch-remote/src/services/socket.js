@@ -82,6 +82,7 @@ export function connect(url, opts = {}) {
 
   // set transport for inputActions
   let lastMoveSent = 0;
+  let lastSpinSent = 0;
   setTransport((action) => {
     if (!socket || !socket.connected) return;
     const { type, payload } = action;
@@ -99,6 +100,17 @@ export function connect(url, opts = {}) {
         if ((x !== 0 || y !== 0) && now - lastMoveSent < 50) break;
         lastMoveSent = now;
         socket.emit("input:event", { analog: { x, y } });
+        break;
+      }
+
+      // ── Right stick: spin the cube ──
+      case "CUBE_SPIN": {
+        const x = payload?.x ?? 0;
+        const y = payload?.y ?? 0;
+        const now = Date.now();
+        if ((x !== 0 || y !== 0) && now - lastSpinSent < 50) break;
+        lastSpinSent = now;
+        socket.emit("input:event", { spin: { x, y } });
         break;
       }
 
@@ -189,6 +201,9 @@ export function connect(url, opts = {}) {
         break;
       case "KEY_PRESS":
         socket.emit("control", { kind: "key", key: payload?.key });
+        break;
+      case "KEY_COMBO":
+        socket.emit("control", { kind: "combo", combo: payload?.combo ?? "" });
         break;
       case "TEXT_INPUT":
         socket.emit("control", { kind: "text", text: payload?.text ?? "" });

@@ -54,6 +54,24 @@ function Send-Text($t) {
   [System.Windows.Forms.SendKeys]::SendWait($sb.ToString())
 }
 
+# Virtual-key lookup for key-combo commands (Ctrl+C, Alt+F4, etc.)
+$VK = @{
+  'ctrl'=0x11; 'control'=0x11; 'shift'=0x10; 'alt'=0x12; 'win'=0x5B; 'meta'=0x5B;
+  'enter'=0x0D; 'return'=0x0D; 'esc'=0x1B; 'escape'=0x1B; 'tab'=0x09; 'space'=0x20;
+  'backspace'=0x08; 'bksp'=0x08; 'delete'=0x2E; 'del'=0x2E; 'home'=0x24; 'end'=0x23;
+  'up'=0x26; 'down'=0x28; 'left'=0x25; 'right'=0x27; 'pageup'=0x21; 'pagedown'=0x22; 'insert'=0x2D;
+}
+function Get-Vk($name) {
+  $n = "$name".ToLower()
+  if ($VK.ContainsKey($n)) { return [byte]$VK[$n] }
+  if ($n.Length -eq 1) {
+    $c = [int][char]$n.ToUpper()
+    if (($c -ge 65 -and $c -le 90) -or ($c -ge 48 -and $c -le 57)) { return [byte]$c }
+  }
+  if ($n -match '^f([1-9]|1[0-2])$') { return [byte](0x70 + [int]$Matches[1] - 1) }
+  return [byte]0
+}
+
 $enc = [System.Text.Encoding]::UTF8
 while (($line = [Console]::In.ReadLine()) -ne $null) {
   if ($line.Length -eq 0) { continue }
@@ -80,7 +98,37 @@ while (($line = [Console]::In.ReadLine()) -ne $null) {
           'RIGHT'     { [NativeInput]::Tap(0x27) }
           'SPACE'     { [NativeInput]::Tap(0x20) }
           'TAB'       { [NativeInput]::Tap(0x09) }
+          'DELETE'    { [NativeInput]::Tap(0x2E) }
+          'HOME'      { [NativeInput]::Tap(0x24) }
+          'END'       { [NativeInput]::Tap(0x23) }
+          'PAGEUP'    { [NativeInput]::Tap(0x21) }
+          'PAGEDOWN'  { [NativeInput]::Tap(0x22) }
+          'INSERT'    { [NativeInput]::Tap(0x2D) }
+          'F1'        { [NativeInput]::Tap(0x70) }
+          'F2'        { [NativeInput]::Tap(0x71) }
+          'F3'        { [NativeInput]::Tap(0x72) }
+          'F4'        { [NativeInput]::Tap(0x73) }
+          'F5'        { [NativeInput]::Tap(0x74) }
+          'F6'        { [NativeInput]::Tap(0x75) }
+          'F7'        { [NativeInput]::Tap(0x76) }
+          'F8'        { [NativeInput]::Tap(0x77) }
+          'F9'        { [NativeInput]::Tap(0x78) }
+          'F10'       { [NativeInput]::Tap(0x79) }
+          'F11'       { [NativeInput]::Tap(0x7A) }
+          'F12'       { [NativeInput]::Tap(0x7B) }
         }
+      }
+      'X' {
+        # Key combo: "<mods> <key>" e.g. "ctrl+shift c". Mods held while key taps.
+        $parts = $rest.Split(' ')
+        if ($parts.Length -ge 2) { $modNames = $parts[0].Split('+'); $keyVk = Get-Vk $parts[1] }
+        else { $modNames = @(); $keyVk = Get-Vk $parts[0] }
+        $modVks = @()
+        foreach ($m in $modNames) { if ($m -ne '') { $v = Get-Vk $m; if ($v -ne 0) { $modVks += $v } } }
+        foreach ($v in $modVks) { [NativeInput]::Down($v) }
+        if ($keyVk -ne 0) { [NativeInput]::Tap($keyVk) }
+        [array]::Reverse($modVks)
+        foreach ($v in $modVks) { [NativeInput]::Up($v) }
       }
       'T' { Send-Text ($enc.GetString([Convert]::FromBase64String($rest))) }
     }
@@ -144,6 +192,12 @@ class InputControlService {
     }
   }
 
+  /** Pre-spawn the PowerShell driver so the FIRST real input isn't delayed by
+   *  its ~few-hundred-ms startup (that was the "first touch feels laggy" bug). */
+  warm() {
+    this.ensureProc();
+  }
+
   move(dx: number, dy: number) {
     if (!this.enabled) return;
     this.pendingDx += dx;
@@ -162,8 +216,8 @@ class InputControlService {
     if (dx !== 0 || dy !== 0) this.write(`M ${dx} ${dy}`);
   }
 
-  click(right = false) {
-    this.write(right ? "R" : "C");
+  click(button: "left" | "right") {
+    this.write(button === "right" ? "R" : "C");
   }
 
   /** Hold / release the left button — used for touch click-and-drag. */
@@ -192,12 +246,50 @@ class InputControlService {
     else if (k === "RIGHT" || k === "ARROWRIGHT") this.write("K RIGHT");
     else if (k === "SPACE") this.write("K SPACE");
     else if (k === "TAB") this.write("K TAB");
+    else if (k === "ESC") this.write("K ESC");
+    else if (k === "DELETE" || k === "DEL") this.write("K DELETE");
+    else if (k === "HOME") this.write("K HOME");
+    else if (k === "END") this.write("K END");
+    else if (k === "PAGEUP") this.write("K PAGEUP");
+    else if (k === "PAGEDOWN") this.write("K PAGEDOWN");
+    else if (k === "INSERT") this.write("K INSERT");
+    else if (k === "F1") this.write("K F1");
+    else if (k === "F2") this.write("K F2");
+    else if (k === "F3") this.write("K F3");
+    else if (k === "F4") this.write("K F4");
+    else if (k === "F5") this.write("K F5");
+    else if (k === "F6") this.write("K F6");
+    else if (k === "F7") this.write("K F7");
+    else if (k === "F8") this.write("K F8");
+    else if (k === "F9") this.write("K F9");
+    else if (k === "F10") this.write("K F10");
+    else if (k === "F11") this.write("K F11");
+    else if (k === "F12") this.write("K F12");
+    else if (k === "CLICK") this.click("left");
+    else if (k === "RIGHTCLICK") this.click("right");
     // unknown key names are ignored
   }
 
   text(str: string) {
     if (!str) return;
     this.write(`T ${Buffer.from(str, "utf8").toString("base64")}`);
+  }
+
+  /** Send a key combo like "ctrl+c", "ctrl shift esc", "alt+f4".
+   *  Modifiers are held while the final key taps. */
+  combo(spec: string) {
+    const s = (spec || "").trim().toLowerCase();
+    if (!s) return;
+    // Tokens may be separated by space and/or '+'. The LAST token is the key,
+    // everything before it is a modifier.
+    const tokens = s.split(/[\s+]+/).filter(Boolean);
+    if (tokens.length === 0) return;
+    const key = tokens[tokens.length - 1];
+    const mods = tokens.slice(0, -1);
+    const modStr = mods.length ? mods.join("+") : "";
+    // Only allow simple [a-z0-9+] in the line we feed PowerShell.
+    const safe = (modStr + " " + key).replace(/[^a-z0-9+ ]/g, "").trim();
+    if (safe) this.write(`X ${safe}`);
   }
 }
 

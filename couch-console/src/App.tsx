@@ -242,6 +242,12 @@ function AppController({
           ]);
           break;
         }
+        case "spin": {
+          // Right-stick rotation from a phone → spin that player's cube.
+          if (msg.playerId)
+            sceneRef.current?.applySpin(msg.playerId, msg.sx || 0, msg.sy || 0);
+          break;
+        }
         case "error": {
           notifService.push(`Backend error: ${msg.message}`);
           break;

@@ -39,6 +39,7 @@ function validateInputPacket(pkt: any) {
   if (!pkt || typeof pkt !== "object") return false;
   if (pkt.buttons && typeof pkt.buttons === "object") return true;
   if (pkt.analog && typeof pkt.analog === "object") return true;
+  if (pkt.spin && typeof pkt.spin === "object") return true;
   return false;
 }
 
@@ -144,6 +145,8 @@ export function initSocketIO(server: HttpServer) {
       lobbySync.addPlayer(player as any);
       socket.data.playerId = playerId;
       socket.join("lobby");
+      // Warm the OS input driver now so the first touchpad gesture is instant.
+      inputControl.warm();
       const seq = syncService.recordEvent("player_joined", player);
       io.to("lobby").emit("player_joined", { ...player, seq });
       // FIX: send current queue state immediately so this client doesn't
@@ -164,6 +167,7 @@ export function initSocketIO(server: HttpServer) {
         playerId,
         buttons: pkt.buttons || {},
         analog: pkt.analog || { x: 0, y: 0 },
+        spin: pkt.spin || undefined,
       };
 
       // While an app is running ("fullscreen" focus) the phone keeps working
@@ -203,10 +207,10 @@ export function initSocketIO(server: HttpServer) {
           inputControl.move(Number(pkt.dx) || 0, Number(pkt.dy) || 0);
           break;
         case "click":
-          inputControl.click(false);
+          inputControl.click("left");
           break;
         case "rclick":
-          inputControl.click(true);
+          inputControl.click("right");
           break;
         case "mdown":
           inputControl.mouseDown();
@@ -220,8 +224,14 @@ export function initSocketIO(server: HttpServer) {
         case "key":
           inputControl.key(String(pkt.key || ""));
           break;
+        case "combo":
+          if (typeof pkt.combo === "string") inputControl.combo(pkt.combo);
+          break;
         case "text":
           if (typeof pkt.text === "string") inputControl.text(pkt.text);
+          break;
+        case "warm":
+          inputControl.warm();
           break;
         default:
           break;

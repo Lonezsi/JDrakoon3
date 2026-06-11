@@ -325,6 +325,29 @@ async function bootstrap() {
     res.json({ ssid });
   });
 
+  // Serve a local image file as an app icon (the browser can't load
+  // file:// paths directly). Validates it's an existing image before streaming.
+  app.get("/api/app-icon", (req, res) => {
+    const p = String(req.query.path || "");
+    const ext = path.extname(p).toLowerCase();
+    const types: Record<string, string> = {
+      ".png": "image/png",
+      ".jpg": "image/jpeg",
+      ".jpeg": "image/jpeg",
+      ".gif": "image/gif",
+      ".webp": "image/webp",
+      ".svg": "image/svg+xml",
+      ".ico": "image/x-icon",
+      ".bmp": "image/bmp",
+    };
+    if (!types[ext] || !fs.existsSync(p) || !fs.statSync(p).isFile()) {
+      return res.status(404).end();
+    }
+    res.setHeader("Content-Type", types[ext]);
+    res.setHeader("Cache-Control", "max-age=3600");
+    fs.createReadStream(p).on("error", () => res.status(500).end()).pipe(res);
+  });
+
   // Resolve a bare exe name (from a browser file drop, where the full path
   // isn't exposed) to an absolute path: PATH lookup first, then a shallow
   // sweep of the usual install locations.

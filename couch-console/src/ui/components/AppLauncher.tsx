@@ -23,9 +23,22 @@ function AppCard({ app, initial }: { app: AppDefinition; initial: boolean }) {
     initial,
   });
 
-  // Any lucide icon by name (set per-app in Settings); unknown → letter tile.
-  const Icon = app.icon
-    ? lucideIcons[app.icon as keyof typeof lucideIcons]
+  // Icon resolution (set per-app in Settings):
+  //  1. an image path/URL  -> <img> (local paths stream via /api/app-icon)
+  //  2. a lucide icon name  -> that icon
+  //  3. empty / unknown     -> default lucide AppWindow
+  const iconStr = (app.icon || "").trim();
+  const isImage =
+    /^https?:\/\//i.test(iconStr) ||
+    /\.(png|jpe?g|gif|webp|svg|ico|bmp)$/i.test(iconStr) ||
+    /[\\/]/.test(iconStr);
+  const imgSrc = isImage
+    ? /^https?:\/\//i.test(iconStr)
+      ? iconStr
+      : `/api/app-icon?path=${encodeURIComponent(iconStr)}`
+    : null;
+  const Icon: any = !isImage
+    ? lucideIcons[iconStr as keyof typeof lucideIcons] || lucideIcons.AppWindow
     : undefined;
 
   return (
@@ -61,10 +74,21 @@ function AppCard({ app, initial }: { app: AppDefinition; initial: boolean }) {
         onClick={() => launchApp(app)}
       >
         <div
-          className="w-12 h-12 rounded-2xl flex items-center justify-center shadow-lg text-xl font-black text-white"
-          style={{ background: app.hex }}
+          className="w-12 h-12 rounded-2xl flex items-center justify-center shadow-lg text-xl font-black text-white overflow-hidden"
+          style={{ background: imgSrc ? "rgba(255,255,255,0.06)" : app.hex }}
         >
-          {Icon ? <Icon size={26} /> : app.name[0]?.toUpperCase() || "?"}
+          {imgSrc ? (
+            <img
+              src={imgSrc}
+              alt=""
+              className="w-full h-full object-contain p-1"
+              draggable={false}
+            />
+          ) : Icon ? (
+            <Icon size={26} />
+          ) : (
+            app.name[0]?.toUpperCase() || "?"
+          )}
         </div>
         <div>
           <h3 className="text-xl font-black tracking-tight italic uppercase leading-none">

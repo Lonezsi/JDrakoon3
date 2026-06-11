@@ -274,6 +274,16 @@ export class LobbyScene {
     }
   }
 
+  /** Right-stick rotation: spin the cube. x = roll (left/right), y = pitch
+   *  (forward/back). Released stick (0,0) stops the spin; angular damping
+   *  then settles it. */
+  public applySpin(playerId: string, sx: number, sy: number) {
+    const state = this.players.get(playerId);
+    if (!state) return;
+    const SPIN = 7;
+    state.body.setAngvel({ x: sy * SPIN, y: 0, z: -sx * SPIN }, true);
+  }
+
   private physicsStep() {
     this.players.forEach((state) => {
       const vel = state.body.linvel();
