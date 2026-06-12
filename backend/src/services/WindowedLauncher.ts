@@ -109,6 +109,11 @@ export function launchWindowedApp(
       exeOnly = m[1];
       argsOnly = m[2] || "";
     }
+  } else if (fs.existsSync(raw)) {
+    // An unquoted path that exists as-is (e.g. "C:\Program Files\app.exe" or a
+    // .lnk with spaces) must NOT be split on whitespace — it's the whole exe.
+    exeOnly = raw;
+    argsOnly = "";
   } else {
     const parts = raw.split(/\s+/);
     if (parts.length > 1) {

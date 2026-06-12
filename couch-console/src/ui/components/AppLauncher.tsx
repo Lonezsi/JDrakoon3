@@ -1,9 +1,18 @@
 import { useEffect, useState, useCallback } from "react";
-import { ChevronRight, Plus, icons as lucideIcons } from "lucide-react";
+import {
+  ChevronRight,
+  Plus,
+  Pencil,
+  Trash2,
+  Check,
+  X,
+  icons as lucideIcons,
+} from "lucide-react";
 import { launchApp } from "../../services/launcherService";
 import { notifService } from "../../services/notificationService";
 import { subscribe } from "../../services/socket";
 import { useFocusable } from "../../navigation/FocusContext";
+import { IconPicker } from "./IconPicker";
 import type { AppDefinition } from "../../shared/types";
 
 const ADD_PALETTE = [
@@ -17,7 +26,17 @@ const ADD_PALETTE = [
   "#f97316",
 ];
 
-function AppCard({ app, initial }: { app: AppDefinition; initial: boolean }) {
+function AppCard({
+  app,
+  initial,
+  onEdit,
+  onDelete,
+}: {
+  app: AppDefinition;
+  initial: boolean;
+  onEdit: (app: AppDefinition) => void;
+  onDelete: (app: AppDefinition) => void;
+}) {
   const { ref, focused } = useFocusable<HTMLDivElement>(`app-${app.id}`, {
     onSelect: () => launchApp(app),
     initial,
@@ -44,10 +63,39 @@ function AppCard({ app, initial }: { app: AppDefinition; initial: boolean }) {
   return (
     <div
       ref={ref}
-      className={`relative flex-shrink-0 transition-all duration-500 ${
+      className={`group relative flex-shrink-0 transition-all duration-500 ${
         focused ? "w-60 h-60 scale-110 z-10" : "w-44 h-44"
       }`}
     >
+      {/* Edit / delete — mouse-only, shown on hover or when focused. Not part
+          of the gamepad focus graph (managing apps is a pointer task). */}
+      <div
+        className={`absolute -top-2 -right-2 z-30 flex gap-1 transition-opacity ${
+          focused ? "opacity-100" : "opacity-0 group-hover:opacity-100"
+        }`}
+      >
+        <button
+          title="Edit"
+          onClick={(e) => {
+            e.stopPropagation();
+            onEdit(app);
+          }}
+          className="w-8 h-8 flex items-center justify-center rounded-full bg-[#12121c] border border-white/15 text-gray-300 hover:text-white hover:border-indigo-400/60 shadow-lg"
+        >
+          <Pencil size={13} />
+        </button>
+        <button
+          title="Delete"
+          onClick={(e) => {
+            e.stopPropagation();
+            onDelete(app);
+          }}
+          className="w-8 h-8 flex items-center justify-center rounded-full bg-[#12121c] border border-white/15 text-red-400 hover:text-red-300 hover:border-red-400/60 shadow-lg"
+        >
+          <Trash2 size={13} />
+        </button>
+      </div>
+
       {/* Layer 1: Colored glow */}
       <div
         className={`absolute inset-0 blur-3xl rounded-3xl transition-opacity duration-700 ease-in-out ${
@@ -112,9 +160,331 @@ function AppCard({ app, initial }: { app: AppDefinition; initial: boolean }) {
   );
 }
 
+// Mouse-first editor for a single app tile. Patches settings.apps[id].
+function AppEditor({
+  app,
+  onClose,
+  onSaved,
+}: {
+  app: AppDefinition;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const [name, setName] = useState(app.name);
+  const [launcher, setLauncher] = useState(app.launcher || "");
+  const [hex, setHex] = useState(app.hex || "#6366f1");
+  const [icon, setIcon] = useState(app.icon || "");
+  const [pickingIcon, setPickingIcon] = useState(false);
+
+  const isImageIcon =
+    /^https?:\/\//i.test(icon) ||
+    /\.(png|jpe?g|gif|webp|svg|ico|bmp)$/i.test(icon) ||
+    /[\\/]/.test(icon);
+  const PreviewIcon: any = !isImageIcon
+    ? lucideIcons[icon as keyof typeof lucideIcons] || lucideIcons.AppWindow
+    : null;
+
+  const save = () => {
+    fetch("/api/settings", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        apps: { [app.id]: { name: name.trim() || app.id, launcher, hex, icon } },
+      }),
+    })
+      .then((r) => r.json())
+      .then((res) => {
+        if (res?.ok) {
+          notifService.push(`Saved ${name}`);
+          onSaved();
+          onClose();
+        } else notifService.push("Failed to save app");
+      })
+      .catch(() => notifService.push("Failed to save app"));
+  };
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      style={{ background: "#00000088", backdropFilter: "blur(8px)" }}
+      onClick={onClose}
+    >
+      <div
+        className="relative w-full max-w-md rounded-3xl overflow-hidden"
+        style={{
+          background: "rgba(12,12,18,0.98)",
+          border: "1px solid rgba(255,255,255,0.08)",
+          boxShadow: "0 30px 70px rgba(0,0,0,0.7)",
+        }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between px-6 pt-6 pb-4 border-b border-white/5">
+          <h2 className="text-xl font-black italic uppercase tracking-tight text-white">
+            Edit app
+          </h2>
+          <button
+            onClick={onClose}
+            className="w-8 h-8 flex items-center justify-center rounded-xl bg-white/5 border border-white/10 text-gray-400 hover:text-white hover:bg-white/10"
+          >
+            <X size={14} />
+          </button>
+        </div>
+
+        <div className="px-6 py-5 space-y-4">
+          <Field label="Name">
+            <input
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-sm text-white outline-none focus:border-indigo-500/40"
+            />
+          </Field>
+
+          <Field label="Launcher (exe path or steam:// …)">
+            <input
+              value={launcher}
+              onChange={(e) => setLauncher(e.target.value)}
+              placeholder="C:\\path\\to\\app.exe"
+              className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-xs font-mono text-white outline-none focus:border-indigo-500/40"
+            />
+          </Field>
+
+          <Field label="Color">
+            <div className="flex items-center gap-2">
+              <input
+                type="color"
+                value={hex}
+                onChange={(e) => setHex(e.target.value)}
+                className="w-9 h-9 rounded-lg border border-white/10 bg-transparent cursor-pointer"
+                style={{ padding: 0 }}
+              />
+              <input
+                value={hex}
+                onChange={(e) => setHex(e.target.value)}
+                className="flex-1 bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-xs font-mono text-white outline-none focus:border-indigo-500/40"
+              />
+            </div>
+          </Field>
+
+          <Field label="Icon (lucide name or image path/URL)">
+            <div className="flex items-center gap-2">
+              <div
+                className="w-9 h-9 rounded-lg flex items-center justify-center text-white overflow-hidden flex-shrink-0"
+                style={{ background: isImageIcon ? "rgba(255,255,255,0.06)" : hex }}
+              >
+                {isImageIcon ? (
+                  <img
+                    src={
+                      /^https?:\/\//i.test(icon)
+                        ? icon
+                        : `/api/app-icon?path=${encodeURIComponent(icon)}`
+                    }
+                    alt=""
+                    className="w-full h-full object-contain p-0.5"
+                  />
+                ) : (
+                  <PreviewIcon size={18} />
+                )}
+              </div>
+              <input
+                value={icon}
+                onChange={(e) => setIcon(e.target.value)}
+                placeholder="Gamepad2  ·  or  C:\\icon.png"
+                className="flex-1 bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-xs font-mono text-white outline-none focus:border-indigo-500/40"
+              />
+              <button
+                onClick={() => setPickingIcon(true)}
+                className="px-3 py-2 rounded-xl bg-white/5 border border-white/10 text-[10px] font-black uppercase tracking-widest text-gray-300 hover:text-white hover:bg-white/10"
+              >
+                Browse
+              </button>
+            </div>
+          </Field>
+        </div>
+
+        <div className="flex justify-end gap-2 px-6 pb-6">
+          <button
+            onClick={onClose}
+            className="px-4 py-2 rounded-xl text-[11px] font-black uppercase tracking-widest text-gray-400 hover:text-white"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={save}
+            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-[11px] font-black uppercase tracking-widest text-white"
+          >
+            <Check size={13} /> Save
+          </button>
+        </div>
+      </div>
+
+      {pickingIcon && (
+        <IconPicker
+          current={icon}
+          onPick={(n) => setIcon(n)}
+          onClose={() => setPickingIcon(false)}
+        />
+      )}
+    </div>
+  );
+}
+
+function Field({
+  label,
+  children,
+}: {
+  label: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div>
+      <label className="block text-[10px] font-black uppercase tracking-widest text-gray-500 mb-1.5">
+        {label}
+      </label>
+      {children}
+    </div>
+  );
+}
+
+// "Add System" picker: lists installed apps (Start Menu + Steam) from the
+// backend, searchable, plus a manual path field. Mouse-first.
+function InstalledAppsPicker({
+  onAdd,
+  onClose,
+}: {
+  onAdd: (launcher: string) => void;
+  onClose: () => void;
+}) {
+  const [list, setList] = useState<{ name: string; launcher: string }[] | null>(
+    null,
+  );
+  const [q, setQ] = useState("");
+  const [manual, setManual] = useState("");
+
+  const load = useCallback((refresh = false) => {
+    setList(null);
+    fetch(`/api/installed-apps${refresh ? "?refresh=1" : ""}`)
+      .then((r) => r.json())
+      .then((d) => setList(d.apps || []))
+      .catch(() => setList([]));
+  }, []);
+
+  useEffect(() => load(false), [load]);
+
+  const matches = (list || []).filter((a) =>
+    a.name.toLowerCase().includes(q.trim().toLowerCase()),
+  );
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      style={{ background: "#00000088", backdropFilter: "blur(8px)" }}
+      onClick={onClose}
+    >
+      <div
+        className="relative w-full max-w-lg max-h-[80vh] flex flex-col rounded-3xl overflow-hidden"
+        style={{
+          background: "rgba(12,12,18,0.98)",
+          border: "1px solid rgba(255,255,255,0.08)",
+          boxShadow: "0 30px 70px rgba(0,0,0,0.7)",
+        }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center gap-3 px-6 pt-6 pb-4 border-b border-white/5">
+          <h2 className="text-xl font-black italic uppercase tracking-tight text-white">
+            Add a system
+          </h2>
+          <button
+            onClick={() => load(true)}
+            className="ml-auto px-3 py-1.5 rounded-xl bg-white/5 border border-white/10 text-[10px] font-black uppercase tracking-widest text-gray-300 hover:text-white hover:bg-white/10"
+          >
+            Rescan
+          </button>
+          <button
+            onClick={onClose}
+            className="w-8 h-8 flex items-center justify-center rounded-xl bg-white/5 border border-white/10 text-gray-400 hover:text-white hover:bg-white/10"
+          >
+            <X size={14} />
+          </button>
+        </div>
+
+        <div className="px-6 py-3 border-b border-white/5">
+          <input
+            autoFocus
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder="Search installed apps…"
+            className="w-full bg-white/5 border border-white/8 rounded-2xl px-4 py-2.5 text-sm text-white placeholder-gray-700 outline-none focus:border-indigo-500/40"
+          />
+        </div>
+
+        <div className="flex-1 overflow-y-auto px-3 py-3 custom-scroll">
+          {list === null && (
+            <p className="text-center text-[11px] font-black uppercase tracking-widest text-gray-600 py-10">
+              Scanning…
+            </p>
+          )}
+          {list !== null && matches.length === 0 && (
+            <p className="text-center text-[11px] font-black uppercase tracking-widest text-gray-600 py-10">
+              {list.length === 0 ? "No apps found" : `No match for “${q}”`}
+            </p>
+          )}
+          {matches.map((a) => (
+            <button
+              key={a.launcher}
+              onClick={() => {
+                onAdd(a.launcher);
+                onClose();
+              }}
+              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left hover:bg-white/10 transition-colors"
+            >
+              <div className="w-7 h-7 rounded-lg bg-indigo-500/20 flex items-center justify-center text-indigo-300 text-xs font-black flex-shrink-0">
+                {a.name[0]?.toUpperCase() || "?"}
+              </div>
+              <div className="min-w-0">
+                <p className="text-sm font-bold text-white truncate">{a.name}</p>
+                <p className="text-[10px] text-gray-600 font-mono truncate">
+                  {a.launcher}
+                </p>
+              </div>
+            </button>
+          ))}
+        </div>
+
+        <div className="flex gap-2 px-6 py-4 border-t border-white/5">
+          <input
+            value={manual}
+            onChange={(e) => setManual(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && manual.trim()) {
+                onAdd(manual.trim());
+                onClose();
+              }
+            }}
+            placeholder="…or paste a path / steam:// URI"
+            className="flex-1 bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-xs font-mono text-white outline-none focus:border-indigo-500/40"
+          />
+          <button
+            onClick={() => {
+              if (manual.trim()) {
+                onAdd(manual.trim());
+                onClose();
+              }
+            }}
+            className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-[11px] font-black uppercase tracking-widest text-white"
+          >
+            Add
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function AppLauncher() {
   const [apps, setApps] = useState<AppDefinition[]>([]);
   const [dropActive, setDropActive] = useState(false);
+  const [editing, setEditing] = useState<AppDefinition | null>(null);
+  const [picking, setPicking] = useState(false);
 
   // Apps live in settings (settings.apps) so they're editable from the
   // Settings modal; reload whenever any client changes settings.
@@ -175,6 +545,22 @@ export function AppLauncher() {
           }
         })
         .catch(() => notifService.push("Failed to add app"));
+    },
+    [loadApps],
+  );
+
+  const deleteApp = useCallback(
+    (app: AppDefinition) => {
+      if (!window.confirm(`Remove "${app.name}" from the library?`)) return;
+      fetch(`/api/apps/${encodeURIComponent(app.id)}`, { method: "DELETE" })
+        .then((r) => r.json())
+        .then((res) => {
+          if (res?.ok) {
+            notifService.push(`Removed ${app.name}`);
+            loadApps();
+          } else notifService.push("Failed to remove app");
+        })
+        .catch(() => notifService.push("Failed to remove app"));
     },
     [loadApps],
   );
@@ -241,7 +627,13 @@ export function AppLauncher() {
 
       <div className="flex gap-5 items-center h-64 overflow-visible px-2">
         {apps.map((app, idx) => (
-          <AppCard key={app.id} app={app} initial={idx === 0} />
+          <AppCard
+            key={app.id}
+            app={app}
+            initial={idx === 0}
+            onEdit={setEditing}
+            onDelete={deleteApp}
+          />
         ))}
         <div
           className={`flex-shrink-0 w-44 h-44 rounded-3xl border-2 border-dashed flex flex-col items-center justify-center cursor-pointer transition-colors ${
@@ -249,12 +641,7 @@ export function AppLauncher() {
               ? "border-indigo-400 text-indigo-300 bg-indigo-500/10"
               : "border-white/10 text-gray-700 hover:text-gray-500 hover:border-white/20"
           }`}
-          onClick={() => {
-            const typed = window.prompt(
-              "Path to .exe or protocol URI (steam://…):",
-            );
-            if (typed) addApp(typed);
-          }}
+          onClick={() => setPicking(true)}
         >
           <Plus size={20} />
           <span className="text-[10px] font-bold mt-2 uppercase tracking-widest">
@@ -265,6 +652,18 @@ export function AppLauncher() {
           </span>
         </div>
       </div>
+
+      {editing && (
+        <AppEditor
+          app={editing}
+          onClose={() => setEditing(null)}
+          onSaved={loadApps}
+        />
+      )}
+
+      {picking && (
+        <InstalledAppsPicker onAdd={addApp} onClose={() => setPicking(false)} />
+      )}
     </div>
   );
 }

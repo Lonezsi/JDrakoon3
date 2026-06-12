@@ -1,0 +1,31 @@
+{
+  "accounts": [
+    {
+      "id": "74d989a8-a41e-4725-a4bc-14daefdd6a41",
+      "gamertag": "Lonezsi",
+      "colorHex": "#ec4899",
+      "icon": "Gamepad2",
+      "createdAt": 1781255924289,
+      "stats": {
+        "appsLaunched": 0,
+        "videosQueued": 0,
+        "jumps": 0
+      },
+      "history": []
+    },
+    {
+      "id": "1bcbda2e-ab72-40e4-94f3-ee683d5a1749",
+      "gamertag": "Player",
+      "colorHex": "#10b981",
+      "icon": "User",
+      "createdAt": 1781256030456,
+      "stats": {
+        "appsLaunched": 0,
+        "videosQueued": 0,
+        "jumps": 0
+      },
+      "history": []
+    }
+  ],
+  "activeId": "74d989a8-a41e-4725-a4bc-14daefdd6a41"
+}

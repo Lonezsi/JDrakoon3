@@ -11,6 +11,7 @@ import { authService } from "./services/AuthService";
 //import { console } from "inspector";
 import { gameScanner } from "./services/GameScanner";
 import { settingsService } from "./services/SettingsService";
+import { accountsService } from "./services/AccountsService";
 import { launchWindowedApp, RunningApp } from "./services/WindowedLauncher";
 
 type RateBucket = { tokens: number; lastRefill: number };
@@ -152,6 +153,7 @@ export function initSocketIO(server: HttpServer) {
       // FIX: send current queue state immediately so this client doesn't
       // see an empty queue until the next mutation.
       socket.emit("queue_updated", videoQueue.getState());
+      socket.emit("accounts_updated", accountsService.get());
 
       cb?.({ ok: true, playerId });
     });
@@ -193,6 +195,7 @@ export function initSocketIO(server: HttpServer) {
         const seq = syncService.recordEvent("action", action);
         io.to("lobby").emit("action", { ...action, seq });
         lobbySync.handleAction(action as any);
+        if (action.type === "jump") accountsService.record("jump");
       }
       cb?.({ ok: true });
     });
@@ -305,6 +308,7 @@ export function initSocketIO(server: HttpServer) {
       // optimistic pending entries with server-side notifications.
       const item = await videoQueue.addToQueue(url, requestedBy, pendingId);
       if (item) {
+        accountsService.record("queue", item.title);
         cb?.({ ok: true });
       } else {
         // The VideoQueueService will call error subscribers which forwards
@@ -447,6 +451,7 @@ export function initSocketIO(server: HttpServer) {
 
           // Tell every client a launch is in progress → loading overlay
           io.to("lobby").emit("app_launching", { appId: payload.appId });
+          accountsService.record("app", payload.appId);
 
           //watchApp(currentApp?.pid ?? -1);
 
@@ -615,6 +620,11 @@ export function initSocketIO(server: HttpServer) {
   // refreshes live when apps are edited or added.
   settingsService.subscribe((settings) => {
     io.emit("settings_updated", { settings });
+  });
+
+  // Push account changes (stats tick, create/edit/delete, active switch).
+  accountsService.subscribe((state) => {
+    io.emit("accounts_updated", state);
   });
 
   return io;

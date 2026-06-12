@@ -2,6 +2,7 @@ import { User } from "lucide-react";
 import type { Player } from "../../shared/types";
 import { useEffect, useState } from "react";
 import { useFocusable } from "../../navigation/FocusContext";
+import { AccountsPanel } from "./AccountsPanel";
 
 interface TopBarProps {
   clock: Date;
@@ -11,8 +12,9 @@ interface TopBarProps {
 const GITHUB_REPO = "Lonezsi/JDrakoon3";
 
 export function TopBar({ clock, players }: TopBarProps) {
+  const [openUsersPanel, setOpenUsersPanel] = useState(false);
   const profileFocus = useFocusable<HTMLDivElement>("topbar-profile", {
-    onSelect: () => alert("User profile features coming soon!"),
+    onSelect: setOpenUsersPanel.bind(null, (open) => !open),
   });
   const timeStr = clock.toLocaleTimeString([], {
     hour: "2-digit",
@@ -108,11 +110,16 @@ export function TopBar({ clock, players }: TopBarProps) {
       .catch(() => {});
   }, []);
 
+  function formatSSID(ssid: string): string {
+    //remove number at the end of the ssid if it exists (e.g. "MyWiFi 5" -> "MyWiFi")
+    return ssid.replace(/\s+\d+$/, "");
+  }
+
   // ── Network info & user name ──────────────────────────────────
   useEffect(() => {
     fetch("/api/network-info")
       .then((res) => res.json())
-      .then((data) => setWifiName(data.ssid))
+      .then((data) => setWifiName(formatSSID(data.ssid)))
       .catch(() => setWifiName("Unknown WiFi"));
   }, []);
 
@@ -176,11 +183,16 @@ export function TopBar({ clock, players }: TopBarProps) {
                 : "bg-white/5 border-white/10 text-indigo-400 hover:bg-white/10 hover:scale-105"
             }
           `}
-          onClick={() => alert("User profile features coming soon!")}
+          onClick={setOpenUsersPanel.bind(null, (open) => !open)}
         >
           <User size={20} />
         </div>
       </div>
+      {/* Full-height accounts panel */}
+      <AccountsPanel
+        open={openUsersPanel}
+        onClose={() => setOpenUsersPanel(false)}
+      />
 
       {/* Update reminder modal */}
       {showModal && (

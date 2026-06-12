@@ -12,6 +12,7 @@ import { lobbySync } from "./services/LobbySyncService";
 import { settingsService } from "./services/SettingsService";
 import { gameScanner } from "./services/GameScanner";
 import { appLauncher } from "./services/AppLauncher";
+import { accountsService } from "./services/AccountsService";
 import { PORT, CACHE_DIR, CONFIG_DIR } from "./config/constants";
 import {
   readRunningFile,
@@ -100,6 +101,40 @@ async function bootstrap() {
       logger.error("Failed to update settings:", err);
       res.status(500).json({ ok: false, error: "update_failed" });
     }
+  });
+
+  // Delete an app tile (deep-merge PATCH can't remove keys, so this is explicit)
+  app.delete("/api/apps/:id", async (req, res) => {
+    try {
+      const removed = await settingsService.removeApp(req.params.id);
+      res.json({ ok: true, removed, settings: settingsService.get() });
+    } catch (err) {
+      logger.error("Failed to delete app:", err);
+      res.status(500).json({ ok: false, error: "delete_failed" });
+    }
+  });
+
+  // ── Accounts (local gamertags + stats; not real auth) ──────────────
+  app.get("/api/accounts", (req, res) => res.json(accountsService.get()));
+
+  app.post("/api/accounts", express.json(), (req, res) => {
+    const acc = accountsService.create(req.body || {});
+    res.json({ ok: true, account: acc, state: accountsService.get() });
+  });
+
+  app.patch("/api/accounts/:id", express.json(), (req, res) => {
+    const ok = accountsService.update(req.params.id, req.body || {});
+    res.json({ ok, state: accountsService.get() });
+  });
+
+  app.delete("/api/accounts/:id", (req, res) => {
+    const ok = accountsService.remove(req.params.id);
+    res.json({ ok, state: accountsService.get() });
+  });
+
+  app.post("/api/accounts/active", express.json(), (req, res) => {
+    const ok = accountsService.setActive(req.body?.id ?? null);
+    res.json({ ok, state: accountsService.get() });
   });
 
   // ── Auto‑update endpoint ──────────────────────────────────────────
@@ -300,8 +335,24 @@ async function bootstrap() {
     try {
       logger.debug("Detecting WiFi SSID for platform:", process.platform);
       if (process.platform === "win32") {
-        const cmd = `powershell -NoProfile -Command "(Get-NetConnectionProfile | Where-Object { $_.InterfaceAlias -like 'Wi-Fi*' }).Name"`;
-        const output = execSync(cmd, { encoding: "utf8" }).trim();
+        const cmd = `
+    [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new();
+    $OutputEncoding = [System.Text.UTF8Encoding]::new();
+    (Get-NetConnectionProfile | Where-Object {
+      $_.InterfaceAlias -like 'Wi-Fi*'
+    }).Name
+  `;
+
+        const output = execSync(
+          `powershell -NoProfile -ExecutionPolicy Bypass -Command "${cmd.replace(/\n/g, "")}"`,
+          {
+            encoding: "buffer",
+            shell: "cmd.exe",
+          },
+        )
+          .toString("utf8")
+          .trim();
+
         return output || "Unknown WiFi";
       } else if (process.platform === "darwin") {
         const output = execSync(
@@ -321,6 +372,7 @@ async function bootstrap() {
   }
 
   app.get("/api/network-info", (req, res) => {
+    res.setHeader("content-type", "application/json; charset=utf-8");
     const ssid = getWifiSSID();
     res.json({ ssid });
   });
@@ -345,7 +397,9 @@ async function bootstrap() {
     }
     res.setHeader("Content-Type", types[ext]);
     res.setHeader("Cache-Control", "max-age=3600");
-    fs.createReadStream(p).on("error", () => res.status(500).end()).pipe(res);
+    fs.createReadStream(p)
+      .on("error", () => res.status(500).end())
+      .pipe(res);
   });
 
   // Resolve a bare exe name (from a browser file drop, where the full path
@@ -388,6 +442,77 @@ async function bootstrap() {
       } catch {}
     }
     res.json({ ok: false, error: "not_found" });
+  });
+
+  // List installed apps for the "Add System" picker: Start Menu shortcuts
+  // (resolved to their .exe target via WScript.Shell) + scanned Steam games.
+  // Cached for the session; pass ?refresh=1 to rescan.
+  let installedAppsCache: { name: string; launcher: string }[] | null = null;
+  app.get("/api/installed-apps", async (req, res) => {
+    if (req.query.refresh) installedAppsCache = null;
+    if (installedAppsCache) return res.json({ apps: installedAppsCache });
+
+    const apps: { name: string; launcher: string }[] = [];
+
+    // Steam games from the existing scanner (steam://rungameid/… launchers).
+    try {
+      for (const e of gameScanner.getLibrary()) {
+        if (e.category === "Steam" && e.name) {
+          apps.push({ name: e.name, launcher: e.path });
+        }
+      }
+    } catch {}
+
+    // Start Menu .lnk shortcuts (Windows only). Pure-Node glob — no PowerShell
+    // subprocess (that proved flaky). Windows launches a .lnk directly, and the
+    // launcher resolves the real target, so we just hand back the shortcut path.
+    if (process.platform === "win32") {
+      const startMenuDirs = [
+        path.join(
+          process.env.ProgramData || "C:\\ProgramData",
+          "Microsoft\\Windows\\Start Menu\\Programs",
+        ),
+        path.join(
+          process.env.APPDATA || "",
+          "Microsoft\\Windows\\Start Menu\\Programs",
+        ),
+      ].filter((d) => d && fs.existsSync(d));
+
+      for (const dir of startMenuDirs) {
+        try {
+          const lnks = await fg("**/*.lnk", {
+            cwd: dir,
+            absolute: true,
+            deep: 4,
+            caseSensitiveMatch: false,
+            suppressErrors: true,
+          });
+          for (const lnk of lnks) {
+            const win = lnk.replace(/\//g, "\\");
+            const base = path.basename(win, ".lnk");
+            if (/uninstall|setup|update|crash|readme|website|help/i.test(base))
+              continue;
+            apps.push({ name: base, launcher: win });
+          }
+        } catch (e) {
+          logger.warn("installed-apps glob failed:", e);
+        }
+      }
+    }
+
+    // De-dupe by name (machine + per-user Start Menus often both have it).
+    const seen = new Set<string>();
+    const deduped = apps
+      .filter((a) => {
+        const k = a.name.toLowerCase();
+        if (seen.has(k)) return false;
+        seen.add(k);
+        return true;
+      })
+      .sort((a, b) => a.name.localeCompare(b.name));
+
+    installedAppsCache = deduped;
+    res.json({ apps: deduped });
   });
 
   // Lightweight page shown when an app is running (reduces lag)
@@ -447,7 +572,11 @@ async function bootstrap() {
       const pidFile = path.join(process.cwd(), ".edge_pid");
       if (fs.existsSync(pidFile)) {
         const pid = parseInt(fs.readFileSync(pidFile, "utf-8").trim());
-        if (pid) execSync(`taskkill /PID ${pid} /F /T`, { stdio: "ignore" });
+        if (pid)
+          execSync(`taskkill /PID ${pid} /F /T`, {
+            encoding: "utf-8",
+            stdio: "ignore",
+          });
       }
     } catch {}
 

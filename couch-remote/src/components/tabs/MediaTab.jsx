@@ -564,6 +564,10 @@ export default function MediaTab() {
           <Plus size={18} />
         </button>
       </div>
+      <p className="text-[9px] text-[#3a3a4a] mt-1.5 px-1 leading-tight flex-shrink-0">
+        Only add content you're authorized to play. Streaming-site extraction is
+        off by default — enable it in the TV's Settings.
+      </p>
     </div>
   );
 }

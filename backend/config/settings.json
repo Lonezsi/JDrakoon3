@@ -20,18 +20,6 @@
     "updateSilently": false
   },
   "apps": {
-    "notepad": {
-      "name": "Notepad",
-      "launcher": "C:\\Windows\\System32\\notepad.exe",
-      "hex": "#16a34a",
-      "icon": "NotebookPen"
-    },
-    "steam": {
-      "name": "Steam",
-      "launcher": "steam://",
-      "hex": "#2563eb",
-      "icon": "Gamepad2"
-    },
     "youtube": {
       "name": "YouTube TV",
       "launcher": "youtube://",

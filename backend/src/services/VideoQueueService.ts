@@ -61,6 +61,29 @@ class VideoQueueService {
      *  When omitted a fresh id is generated (e.g. for server-side adds). */
     pendingId: string = uuidv4(),
   ): Promise<QueueItem | null> {
+    // Dedupe: don't add a URL already queued or in-flight.
+    if (
+      this.queue.some((q) => q.url === url) ||
+      this.pendingItems.some((p) => p.url === url)
+    ) {
+      this.notifyError(pendingId, url, "Already in the queue");
+      return null;
+    }
+
+    // Legal gate: a direct media file is always fine, but extracting from a
+    // streaming site (YouTube etc.) requires the user to opt in via Settings.
+    const isDirectMedia = /\.(mp3|mp4|m4a|webm|ogg|oga|flac|wav|mov|mkv)(\?.*)?$/i.test(
+      url,
+    );
+    if (!isDirectMedia && !settingsService.get().media.allowExtraction) {
+      this.notifyError(
+        pendingId,
+        url,
+        "Online extraction is off — enable it in Settings, or add a direct media link.",
+      );
+      return null;
+    }
+
     // 1. Register as pending and broadcast immediately — instant feedback for
     //    every connected client.
     this.pendingItems.push({ id: pendingId, url, requestedBy });

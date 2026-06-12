@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { RotateCcw, X } from "lucide-react";
+import { RotateCcw, X, Trash2 } from "lucide-react";
 import React from "react";
 import { useFocus, useFocusable } from "../../navigation/FocusContext";
 
@@ -509,6 +509,20 @@ export const SettingsModal = React.memo(function SettingsModal({
 
   const resetField = (path: string) => updateField(path, flatDefaults[path]);
 
+  // Delete an app entry (deep-merge PATCH can't remove keys → dedicated route).
+  const deleteApp = (id: string) => {
+    const label = settings?.apps?.[id]?.name || id;
+    if (!window.confirm(`Remove "${label}" from the library?`)) return;
+    fetch(`/api/apps/${encodeURIComponent(id)}`, { method: "DELETE" })
+      .then((r) => r.json())
+      .then(() =>
+        fetch("/api/settings")
+          .then((r) => r.json())
+          .then((data) => setSettings(data)),
+      )
+      .catch(() => {});
+  };
+
   const resetAll = () => {
     const payload: any = {};
     for (const path of allPaths) {
@@ -628,31 +642,91 @@ export const SettingsModal = React.memo(function SettingsModal({
             </p>
           )}
 
-          {Object.entries(grouped).map(([group, paths]) => (
-            <div key={group}>
+          {Object.entries(grouped).map(([group, paths]) => {
+            const header = (
               <div className="flex items-center gap-2.5 mb-3">
                 <span className="px-2.5 py-0.5 bg-indigo-500/15 rounded-md text-[9px] font-black uppercase tracking-widest text-indigo-400">
                   {group}
                 </span>
                 <div className="flex-1 h-px bg-white/5" />
               </div>
+            );
 
-              <div className="space-y-1">
-                {paths.map((path) => (
-                  <SettingRow
-                    key={path}
-                    path={path}
-                    value={flatCurrent[path]}
-                    defaultValue={flatDefaults[path]}
-                    description={descriptions[path]}
-                    initial={path === filteredPaths[0]}
-                    onUpdate={(v) => updateField(path, v)}
-                    onReset={() => resetField(path)}
-                  />
-                ))}
+            // Apps get one card per app (name/launcher/color/icon grouped),
+            // each with its own delete button.
+            if (group === "apps") {
+              const byApp: Record<string, string[]> = {};
+              for (const p of paths) {
+                const id = p.split(".")[1];
+                (byApp[id] ||= []).push(p);
+              }
+              return (
+                <div key={group}>
+                  {header}
+                  <div className="space-y-3">
+                    {Object.entries(byApp).map(([id, appPaths]) => (
+                      <div
+                        key={id}
+                        className="rounded-2xl border border-white/8 bg-white/[0.02] p-3"
+                      >
+                        <div className="flex items-center justify-between mb-1.5 px-1">
+                          <span className="text-[11px] font-black uppercase tracking-widest text-white/80">
+                            {settings.apps?.[id]?.name || id}
+                          </span>
+                          <button
+                            onClick={() => deleteApp(id)}
+                            title="Delete app"
+                            className="flex items-center gap-1 text-[10px] font-black uppercase tracking-widest text-red-400/70 hover:text-red-300 transition-colors"
+                          >
+                            <Trash2 size={12} /> Delete
+                          </button>
+                        </div>
+                        <div className="space-y-1">
+                          {appPaths.map((path) => (
+                            <SettingRow
+                              key={path}
+                              path={path}
+                              value={flatCurrent[path]}
+                              defaultValue={flatDefaults[path]}
+                              description={descriptions[path]}
+                              initial={path === filteredPaths[0]}
+                              onUpdate={(v) => updateField(path, v)}
+                              onReset={() => resetField(path)}
+                            />
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                    {Object.keys(byApp).length === 0 && (
+                      <p className="text-[10px] text-gray-600 italic px-1">
+                        No apps yet — add them from the dashboard.
+                      </p>
+                    )}
+                  </div>
+                </div>
+              );
+            }
+
+            return (
+              <div key={group}>
+                {header}
+                <div className="space-y-1">
+                  {paths.map((path) => (
+                    <SettingRow
+                      key={path}
+                      path={path}
+                      value={flatCurrent[path]}
+                      defaultValue={flatDefaults[path]}
+                      description={descriptions[path]}
+                      initial={path === filteredPaths[0]}
+                      onUpdate={(v) => updateField(path, v)}
+                      onReset={() => resetField(path)}
+                    />
+                  ))}
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </div>
     </div>

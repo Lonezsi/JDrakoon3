@@ -171,3 +171,11 @@ Currently focusable: the app-launcher cards, the footer's Settings and Shutdown
 buttons, the top-bar profile, and the settings modal's close/reset buttons. The
 lobby, mini-player, and queue are mouse/phone controlled and intentionally not in
 the focus graph.
+
+## License
+
+[MIT](LICENSE) © Lonezsi.
+
+The optional video queue uses `yt-dlp` to fetch media. You are responsible for
+only adding content you're authorized to play, and for complying with each
+source platform's Terms of Service and applicable copyright law.

@@ -6,40 +6,21 @@ import { Settings } from "../models/types";
 
 export const defaultSettings: Settings = {
   display: { fullscreen: true, crtEffect: true, volume: 80 },
-  media: { defaultVolume: 72, cacheLimitGB: 20, preloadNext: true },
+  media: {
+    defaultVolume: 72,
+    cacheLimitGB: 20,
+    preloadNext: true,
+    allowExtraction: false,
+  },
   input: { deadzone: 0.25, repeatDelay: 300, repeatInterval: 60 },
   autoupdate: {
     autoupdate: true,
     remindMeAboutUpdate: true,
     updateSilently: false,
   },
-  apps: {
-    notepad: {
-      name: "Notepad",
-      launcher: "C:\\Windows\\System32\\notepad.exe",
-      hex: "#16a34a",
-      icon: "NotebookPen",
-    },
-    steam: {
-      name: "Steam",
-      launcher: "steam://",
-      hex: "#2563eb",
-      icon: "Gamepad2",
-    },
-    youtube: {
-      name: "YouTube TV",
-      launcher: "youtube://",
-      hex: "#dc2626",
-      icon: "Video",
-    },
-    plex: { name: "Plex", launcher: "", hex: "#eab308", icon: "Tv" },
-    retroarch: {
-      name: "RetroArch",
-      launcher: "",
-      hex: "#475569",
-      icon: "Gamepad",
-    },
-  },
+  // No default apps — a fresh install starts empty; the user adds their own
+  // by dropping an .exe, typing a path, or picking from installed apps.
+  apps: {},
   players: [],
   libraryFolders: [
     "C:\\Program Files (x86)\\Steam\\steamapps\\common",
@@ -102,6 +83,16 @@ class SettingsService {
     this.settings = deepMerge(this.settings, partial);
     await this.save();
     this.subscribers.forEach((fn) => fn(this.settings));
+  }
+
+  /** Delete an app entry. deepMerge can't remove keys, so removal needs its
+   *  own path. Returns true if the app existed. */
+  async removeApp(id: string): Promise<boolean> {
+    if (!this.settings.apps || !(id in this.settings.apps)) return false;
+    delete this.settings.apps[id];
+    await this.save();
+    this.subscribers.forEach((fn) => fn(this.settings));
+    return true;
   }
 
   subscribe(fn: (settings: Settings) => void) {

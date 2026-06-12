@@ -437,6 +437,10 @@ export function Footer({ players }: FooterProps) {
             <Plus size={12} />
           </button>
         </div>
+        <p className="text-[8px] text-gray-700 mt-1 leading-tight">
+          Only add content you're authorized to play. Streaming-site extraction
+          is off by default — enable it in Settings.
+        </p>
       </div>
 
       {/* ── 3 · System buttons ── */}

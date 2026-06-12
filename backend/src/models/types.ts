@@ -57,7 +57,15 @@ export interface AppConfig {
 
 export interface Settings {
   display: { fullscreen: boolean; crtEffect: boolean; volume: number };
-  media: { defaultVolume: number; cacheLimitGB: number; preloadNext: boolean };
+  media: {
+    defaultVolume: number;
+    cacheLimitGB: number;
+    preloadNext: boolean;
+    /** Allow yt-dlp extraction from streaming sites (YouTube etc.). Off by
+     *  default: only direct media URLs / local files are accepted until the
+     *  user opts in, since extraction can violate a platform's ToS. */
+    allowExtraction: boolean;
+  };
   input: { deadzone: number; repeatDelay: number; repeatInterval: number };
   autoupdate: AutoUpdateSettings;
   apps: Record<string, AppConfig>;

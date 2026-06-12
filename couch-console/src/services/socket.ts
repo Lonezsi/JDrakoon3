@@ -75,6 +75,7 @@ export function connect(
     "app_launched",
     "app_closed",
     "settings_updated",
+    "accounts_updated",
   ];
   events.forEach((event) => {
     socket!.on(event, (payload: any) => notify({ type: event, ...payload }));
