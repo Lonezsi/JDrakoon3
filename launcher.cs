@@ -17,10 +17,14 @@
 // ──────────────────────────────────────────────────────────────────────────
 using System;
 using System.Diagnostics;
+using System.Drawing;
 using System.IO;
 using System.Net;
 using System.Text.RegularExpressions;
 using System.Threading;
+using System.Windows.Forms;
+using Microsoft.Web.WebView2.Core;
+using Microsoft.Web.WebView2.WinForms;
 
 [assembly: System.Reflection.AssemblyTitle("JDrakoon3")]
 [assembly: System.Reflection.AssemblyProduct("JDrakoon3")]
@@ -52,6 +56,7 @@ static class Launcher
         catch { }
     }
 
+    [STAThread]
     static int Main()
     {
         // GitHub (and its CDN) require TLS 1.2; .NET Framework 4 may default lower.
@@ -101,15 +106,10 @@ static class Launcher
                 return 1;
             }
 
-            LaunchKiosk();
-
-            // Block until the kiosk window closes OR the backend exits.
-            while (true)
-            {
-                Thread.Sleep(400);
-                if (HasExited(kiosk)) { Log("Kiosk closed."); break; }
-                if (HasExited(backend)) { Log("Backend exited."); break; }
-            }
+            // Prefer our own branded WebView2 window (our icon, no Edge chrome,
+            // reliable close). Falls back to an Edge --kiosk if the WebView2
+            // runtime isn't available on this machine.
+            RunKiosk();
 
             Cleanup();
             return 0;
@@ -343,6 +343,101 @@ static class Launcher
         // holds a lock the delete fails and we just carry on.
         try { if (Directory.Exists(EDGE_PROFILE)) Directory.Delete(EDGE_PROFILE, true); }
         catch (Exception e) { Log("profile wipe skipped: " + e.Message); }
+    }
+
+    // Try the branded WebView2 window first; on any failure (most likely the
+    // WebView2 runtime not being installed) fall back to the Edge kiosk so the
+    // app still works. Either path blocks until the window/kiosk is gone.
+    static void RunKiosk()
+    {
+        try
+        {
+            RunWebView2Kiosk();
+        }
+        catch (Exception e)
+        {
+            Log("WebView2 kiosk unavailable (" + e.Message + ") - using Edge kiosk.");
+            WipeKioskProfile();
+            RunEdgeKioskBlocking();
+        }
+    }
+
+    // A borderless, fullscreen WinForms window hosting WebView2, branded with our
+    // icon + title (so Alt-Tab / taskbar show "JDrakoon3", not Edge). Creating the
+    // environment up front throws if the WebView2 runtime is missing → caller
+    // falls back to Edge before any window is shown.
+    static void RunWebView2Kiosk()
+    {
+        Application.EnableVisualStyles();
+        Application.SetCompatibleTextRenderingDefault(false);
+
+        string udf = Path.Combine(DATA_DIR, "webview2");
+        // Throws CoreWebView2RuntimeNotFoundException if the runtime is absent.
+        var env = CoreWebView2Environment.CreateAsync(null, udf).GetAwaiter().GetResult();
+
+        var form = new Form
+        {
+            FormBorderStyle = FormBorderStyle.None,
+            WindowState = FormWindowState.Maximized,
+            Text = "JDrakoon3",
+            BackColor = Color.Black,
+            ShowInTaskbar = true,
+            KeyPreview = true,
+        };
+        try { form.Icon = new Icon(Path.Combine(ROOT, "drakoon.ico")); } catch { }
+
+        var wv = new WebView2 { Dock = DockStyle.Fill };
+        form.Controls.Add(wv);
+
+        wv.CoreWebView2InitializationCompleted += (s, e) =>
+        {
+            if (!e.IsSuccess)
+            {
+                Log("WebView2 init failed: " + (e.InitializationException == null ? "?" : e.InitializationException.Message));
+                form.Close();
+                return;
+            }
+            var c = wv.CoreWebView2;
+            c.Settings.AreDefaultContextMenusEnabled = false;
+            c.Settings.IsStatusBarEnabled = false;
+            c.Settings.AreDevToolsEnabled = false;
+            c.Settings.IsZoomControlEnabled = false;
+            c.Settings.AreBrowserAcceleratorKeysEnabled = false;
+            // Keep target=_blank / window.open inside the same view (kiosk).
+            c.NewWindowRequested += (s2, e2) => { e2.Handled = true; c.Navigate(e2.Uri); };
+            c.ProcessFailed += (s2, e2) => { Log("WebView2 process failed: " + e2.ProcessFailedKind); form.Close(); };
+            c.Navigate(BASEURL);
+        };
+
+        form.Load += (s, e) =>
+        {
+            try { wv.EnsureCoreWebView2Async(env); }
+            catch (Exception ex) { Log("EnsureCoreWebView2 failed: " + ex.Message); form.Close(); }
+        };
+
+        // If the backend dies, tear the window down too.
+        var watch = new System.Windows.Forms.Timer { Interval = 500 };
+        watch.Tick += (s, e) =>
+        {
+            if (HasExited(backend)) { Log("Backend exited - closing kiosk."); form.Close(); }
+        };
+        watch.Start();
+
+        Log("Opening WebView2 kiosk.");
+        Application.Run(form);
+        watch.Stop();
+    }
+
+    static void RunEdgeKioskBlocking()
+    {
+        LaunchKiosk();
+        // Block until the kiosk window closes OR the backend exits.
+        while (true)
+        {
+            Thread.Sleep(400);
+            if (HasExited(kiosk)) { Log("Kiosk closed."); break; }
+            if (HasExited(backend)) { Log("Backend exited."); break; }
+        }
     }
 
     static void LaunchKiosk()

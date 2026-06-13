@@ -55,6 +55,34 @@ export interface AppConfig {
   icon: string;
 }
 
+/** Per-device input tuning, stored under settings.input.devices.<id>. */
+export interface DeviceInputConfig {
+  /** Master switch — a disabled device's actions are ignored by the console. */
+  enabled: boolean;
+  /** Stick deadzone (gamepads). Keyboards ignore it. */
+  deadzone: number;
+  /** Name of the mapping profile (settings.input.mappings) this device uses.
+   *  Unset → the built-in default for its kind. */
+  mapping?: string;
+}
+
+/** A named, reusable control-mapping profile (settings.input.mappings.<name>).
+ *  Logical actions: moveUp/Down/Left/Right (keyboard movement), navUp/Down/
+ *  Left/Right, confirm, back, jump. Gamepads bind buttons by index and sticks
+ *  by axes pair; keyboards bind keys by `KeyboardEvent.key` (lowercase). */
+export interface InputMapping {
+  type: "gamepad" | "keyboard";
+  /** Gamepad: logical action → source. A number is a button index; a string is
+   *  an axis-half ("a3+"/"a3-") or POV hat ("h9:-1.000") for non-standard pads.
+   *  -1 / "" = unbound. */
+  buttons: Record<string, number | string>;
+  /** Keyboard: logical action → key ("" = unbound). */
+  keys: Record<string, string>;
+  /** Gamepad sticks: move = cube movement, spin = cube rotation.
+   *  [-1, -1] = unbound. */
+  axes: { move: [number, number]; spin: [number, number] };
+}
+
 export interface Settings {
   display: { fullscreen: boolean; crtEffect: boolean; volume: number };
   media: {
@@ -66,7 +94,17 @@ export interface Settings {
      *  user opts in, since extraction can violate a platform's ToS. */
     allowExtraction: boolean;
   };
-  input: { deadzone: number; repeatDelay: number; repeatInterval: number };
+  input: {
+    deadzone: number;
+    repeatDelay: number;
+    repeatInterval: number;
+    /** Per-device overrides, keyed by device id ("keyboard1", "keyboard2",
+     *  "gamepad-0", …). Registered by the console when a device is detected;
+     *  edited from Settings. */
+    devices: Record<string, DeviceInputConfig>;
+    /** Named control-mapping profiles, assignable per device. */
+    mappings: Record<string, InputMapping>;
+  };
   autoupdate: AutoUpdateSettings;
   apps: Record<string, AppConfig>;
   players: { name: string; color: string }[];

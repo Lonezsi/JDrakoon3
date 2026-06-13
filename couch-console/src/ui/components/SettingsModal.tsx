@@ -1,7 +1,9 @@
 import { useState, useEffect } from "react";
-import { RotateCcw, X, Trash2 } from "lucide-react";
+import { RotateCcw, X, Trash2, Pencil } from "lucide-react";
 import React from "react";
 import { useFocus, useFocusable } from "../../navigation/FocusContext";
+import { MappingEditor } from "./MappingEditor";
+import { defaultProfileFor, deviceKind } from "../../services/deviceSettings";
 
 // ---------- helpers ----------
 
@@ -432,6 +434,10 @@ export const SettingsModal = React.memo(function SettingsModal({
   const [defaults, setDefaults] = useState<Record<string, any> | null>(null);
   const [descriptions, setDescriptions] = useState<Record<string, string>>({});
   const [search, setSearch] = useState("");
+  const [mappingFor, setMappingFor] = useState<{
+    deviceId: string;
+    label: string;
+  } | null>(null);
 
   const { pushLayer, popLayer } = useFocus();
 
@@ -464,9 +470,14 @@ export const SettingsModal = React.memo(function SettingsModal({
 
   // Union of default + current paths so runtime-added entries (apps dropped
   // onto the dashboard) show up here even though they have no default.
+  // input.mappings.* are full control-mapping profiles — edited in the
+  // MappingEditor (per-device Edit button), far too noisy as flat rows.
   const allPaths = Array.from(
     new Set([...Object.keys(flatDefaults), ...Object.keys(flatCurrent)]),
-  ).filter((path) => !path.startsWith("players"));
+  ).filter(
+    (path) =>
+      !path.startsWith("players") && !path.startsWith("input.mappings"),
+  );
 
   const filteredPaths = allPaths.filter(
     (path) =>
@@ -707,6 +718,127 @@ export const SettingsModal = React.memo(function SettingsModal({
               );
             }
 
+            // Input gets a Devices block: one card per detected device with a
+            // mapping-profile dropdown + Edit (opens the MappingEditor), plus
+            // its generic rows (enabled / deadzone).
+            if (group === "input") {
+              const generic = paths.filter(
+                (p) => !p.startsWith("input.devices."),
+              );
+              const byDevice: Record<string, string[]> = {};
+              for (const p of paths) {
+                if (!p.startsWith("input.devices.")) continue;
+                const id = p.split(".")[2];
+                // .mapping is rendered as the dropdown below, not a text row.
+                if (p.endsWith(".mapping")) continue;
+                (byDevice[id] ||= []).push(p);
+              }
+              const mappingNames = Object.keys(settings.input?.mappings || {});
+              const deviceLabel = (id: string) =>
+                id === "keyboard1"
+                  ? "Keyboard 1"
+                  : id === "keyboard2"
+                    ? "Keyboard 2"
+                    : id.startsWith("gamepad-")
+                      ? `Controller ${(parseInt(id.split("-")[1], 10) || 0) + 1}`
+                      : id;
+              return (
+                <div key={group}>
+                  {header}
+                  <div className="space-y-1">
+                    {generic.map((path) => (
+                      <SettingRow
+                        key={path}
+                        path={path}
+                        value={flatCurrent[path]}
+                        defaultValue={flatDefaults[path]}
+                        description={descriptions[path]}
+                        initial={path === filteredPaths[0]}
+                        onUpdate={(v) => updateField(path, v)}
+                        onReset={() => resetField(path)}
+                      />
+                    ))}
+                  </div>
+                  {Object.keys(byDevice).length > 0 && (
+                    <div className="mt-3 space-y-3">
+                      {Object.entries(byDevice).map(([id, devPaths]) => {
+                        const kind = deviceKind(id);
+                        const assigned =
+                          settings.input?.devices?.[id]?.mapping ||
+                          defaultProfileFor(id);
+                        const options = mappingNames.filter(
+                          (n) => settings.input?.mappings?.[n]?.type === kind,
+                        );
+                        return (
+                          <div
+                            key={id}
+                            className="rounded-2xl border border-white/8 bg-white/[0.02] p-3"
+                          >
+                            <div className="flex items-center justify-between gap-2 mb-1.5 px-1">
+                              <span className="text-[11px] font-black uppercase tracking-widest text-white/80">
+                                {deviceLabel(id)}
+                                <span className="ml-2 text-gray-600">
+                                  {kind}
+                                </span>
+                              </span>
+                              <div className="flex items-center gap-1.5">
+                                <select
+                                  value={assigned}
+                                  onChange={(e) =>
+                                    updateField(
+                                      `input.devices.${id}.mapping`,
+                                      e.target.value,
+                                    )
+                                  }
+                                  title="Control mapping"
+                                  className="bg-white/5 border border-white/10 rounded-lg px-2 py-1 text-[11px] font-bold text-indigo-200 outline-none focus:border-indigo-500/40 max-w-[130px]"
+                                >
+                                  {!options.includes(assigned) && (
+                                    <option value={assigned}>{assigned}</option>
+                                  )}
+                                  {options.map((n) => (
+                                    <option key={n} value={n}>
+                                      {n}
+                                    </option>
+                                  ))}
+                                </select>
+                                <button
+                                  onClick={() =>
+                                    setMappingFor({
+                                      deviceId: id,
+                                      label: deviceLabel(id),
+                                    })
+                                  }
+                                  title="Edit mapping"
+                                  className="flex items-center gap-1 text-[10px] font-black uppercase tracking-widest text-gray-400 hover:text-white transition-colors"
+                                >
+                                  <Pencil size={11} /> Edit
+                                </button>
+                              </div>
+                            </div>
+                            <div className="space-y-1">
+                              {devPaths.map((path) => (
+                                <SettingRow
+                                  key={path}
+                                  path={path}
+                                  value={flatCurrent[path]}
+                                  defaultValue={flatDefaults[path]}
+                                  description={descriptions[path]}
+                                  initial={path === filteredPaths[0]}
+                                  onUpdate={(v) => updateField(path, v)}
+                                  onReset={() => resetField(path)}
+                                />
+                              ))}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              );
+            }
+
             return (
               <div key={group}>
                 {header}
@@ -729,6 +861,21 @@ export const SettingsModal = React.memo(function SettingsModal({
           })}
         </div>
       </div>
+
+      {mappingFor && (
+        <MappingEditor
+          deviceId={mappingFor.deviceId}
+          label={mappingFor.label}
+          onClose={() => {
+            setMappingFor(null);
+            // The editor saved new mappings/assignments — refresh our copy.
+            fetch("/api/settings")
+              .then((r) => r.json())
+              .then((data) => setSettings(data))
+              .catch(() => {});
+          }}
+        />
+      )}
     </div>
   );
 });

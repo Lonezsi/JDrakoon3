@@ -137,6 +137,14 @@ async function bootstrap() {
     res.json({ ok, state: accountsService.get() });
   });
 
+  // Map an input device (keyboard slot / gamepad / phone) to an account, so its
+  // lobby cube adopts that account's color & gamertag. accountId null clears it.
+  app.post("/api/accounts/assign", express.json(), (req, res) => {
+    const { deviceId, accountId } = req.body || {};
+    const ok = accountsService.assignDevice(deviceId, accountId ?? null);
+    res.json({ ok, state: accountsService.get() });
+  });
+
   // ── Auto‑update endpoint ──────────────────────────────────────────
   app.post("/api/update", express.json(), async (req, res) => {
     const { key } = req.body || {};

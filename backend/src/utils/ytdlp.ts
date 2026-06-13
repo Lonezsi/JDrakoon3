@@ -6,6 +6,7 @@ import path from "path";
 import https from "https";
 import fetch from "node-fetch";
 import logger from "./logger";
+import { ytDlpBinaryName } from "../platform";
 
 const execAsync = promisify(exec);
 
@@ -18,15 +19,8 @@ export interface VideoInfo {
 
 const BIN_DIR = path.join(process.cwd(), "bin");
 
-// Determine the correct yt-dlp binary for the current Windows architecture
-function getYtDlpBinaryName(): string {
-  // process.arch is 'ia32' for 32-bit, 'x64' for 64-bit
-  const is32bit = process.arch === "ia32";
-  return is32bit ? "yt-dlp_x86.exe" : "yt-dlp.exe";
-}
-
 function getYtDlpLocalPath(): string {
-  return path.join(BIN_DIR, getYtDlpBinaryName());
+  return path.join(BIN_DIR, ytDlpBinaryName());
 }
 
 let ytdlpPath: string | null = null;
@@ -56,7 +50,7 @@ async function ensureYtDlp(): Promise<string> {
   }
 
   // 3. Download the correct binary
-  const binaryName = getYtDlpBinaryName();
+  const binaryName = ytDlpBinaryName();
   const downloadUrl = `https://github.com/yt-dlp/yt-dlp/releases/latest/download/${binaryName}`;
   logger.info(`Downloading ${binaryName} from ${downloadUrl} ...`);
 
@@ -95,9 +89,13 @@ async function ensureYtDlp(): Promise<string> {
       await execAsync(
         `powershell -Command "Unblock-File -Path '${localPath}'"`,
       );
+    } else {
+      // The yt-dlp release binaries for macOS/Linux arrive without the execute
+      // bit set when fetched over HTTP — mark it runnable.
+      await fsPromises.chmod(localPath, 0o755);
     }
   } catch (e) {
-    logger.warn("Could not unblock yt-dlp, but it may still work");
+    logger.warn("Could not finalize yt-dlp binary, but it may still work");
   }
 
   ytdlpPath = localPath;

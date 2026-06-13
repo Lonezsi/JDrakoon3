@@ -12,7 +12,7 @@ import { authService } from "./services/AuthService";
 import { gameScanner } from "./services/GameScanner";
 import { settingsService } from "./services/SettingsService";
 import { accountsService } from "./services/AccountsService";
-import { launchWindowedApp, RunningApp } from "./services/WindowedLauncher";
+import { launchApp, RunningApp } from "./services/launcher";
 
 type RateBucket = { tokens: number; lastRefill: number };
 
@@ -455,7 +455,7 @@ export function initSocketIO(server: HttpServer) {
 
           //watchApp(currentApp?.pid ?? -1);
 
-          currentApp = launchWindowedApp(exePath, {
+          currentApp = launchApp(exePath, {
             onReady: (focused) => {
               // Window exists and is foregrounded → safe to swap to the lite page
               io.to("lobby").emit("app_launched", {

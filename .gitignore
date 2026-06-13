@@ -7,3 +7,7 @@ frontend-build/
 /JDrakoon3.exe
 /node.exe
 crash-output.txt
+
+# WebView2 SDK DLLs — fetched from NuGet by build-release.ps1 (Ensure-WebView2)
+/webview2/
+_csc_check.rsp

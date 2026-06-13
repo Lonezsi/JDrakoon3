@@ -3,29 +3,27 @@
     {
       "id": "74d989a8-a41e-4725-a4bc-14daefdd6a41",
       "gamertag": "Lonezsi",
-      "colorHex": "#ec4899",
-      "icon": "Gamepad2",
+      "colorHex": "#10b981",
+      "icon": "Beef",
       "createdAt": 1781255924289,
       "stats": {
-        "appsLaunched": 0,
+        "appsLaunched": 1,
         "videosQueued": 0,
-        "jumps": 0
+        "jumps": 62
       },
-      "history": []
-    },
-    {
-      "id": "1bcbda2e-ab72-40e4-94f3-ee683d5a1749",
-      "gamertag": "Player",
-      "colorHex": "#10b981",
-      "icon": "User",
-      "createdAt": 1781256030456,
-      "stats": {
-        "appsLaunched": 0,
-        "videosQueued": 0,
-        "jumps": 0
-      },
-      "history": []
+      "history": [
+        {
+          "type": "app",
+          "label": "youtube",
+          "at": 1781274900512
+        }
+      ]
     }
   ],
-  "activeId": "74d989a8-a41e-4725-a4bc-14daefdd6a41"
+  "activeId": "74d989a8-a41e-4725-a4bc-14daefdd6a41",
+  "deviceMap": {
+    "UHJK": "74d989a8-a41e-4725-a4bc-14daefdd6a41",
+    "6248d586-770a-4f22-aae4-22c3e49a178b": "74d989a8-a41e-4725-a4bc-14daefdd6a41",
+    "gp0": "74d989a8-a41e-4725-a4bc-14daefdd6a41"
+  }
 }

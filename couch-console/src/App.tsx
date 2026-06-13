@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, useRef } from "react";
 import { appState } from "./core/stateMachine";
 import { events } from "./core/events";
 import { connect, subscribe } from "./services/socket";
@@ -39,6 +39,22 @@ function AppController({
 }) {
   const { move, select, goBack, resetToRoot } = useFocus();
 
+  // Device→account assignments (#10). Held in a ref so both the input effect
+  // (to birth a cube with the right color) and the socket effect (to recolor a
+  // live cube) read the latest mapping without re-subscribing.
+  const accountsRef = useRef<{
+    accounts: { id: string; gamertag: string; colorHex: string }[];
+    deviceMap: Record<string, string>;
+  }>({ accounts: [], deviceMap: {} });
+
+  const cosmeticFor = (
+    deviceId: string,
+  ): { color: string; name: string } | null => {
+    const { accounts, deviceMap } = accountsRef.current;
+    const acc = accounts.find((a) => a.id === deviceMap[deviceId]);
+    return acc ? { color: acc.colorHex, name: acc.gamertag } : null;
+  };
+
   // ── Local input ────────────────────────────────────────────────
   useEffect(() => {
     const colorPalette = [
@@ -62,10 +78,14 @@ function AppController({
     }
     function ensurePlayerExists(playerId: string) {
       if (playerManager.players.find((p) => p.id === playerId)) return;
-      const name = displayName(playerId);
-      // Random palette pick — a sequential index resets whenever this effect
-      // re-runs, which made every player the same color.
+      // If this device is assigned to an account, the cube is born with that
+      // account's gamertag + color; otherwise fall back to a generated name and
+      // a random palette pick (a sequential index resets on effect re-run, which
+      // made every player the same color).
+      const cos = cosmeticFor(playerId);
+      const name = cos?.name ?? displayName(playerId);
       const color =
+        cos?.color ??
         colorPalette[Math.floor(Math.random() * colorPalette.length)];
       const newPlayer: Player = {
         id: playerId,
@@ -108,6 +128,17 @@ function AppController({
         } else if (action.type === "jump" && action.playerId) {
           ensurePlayerExists(action.playerId);
           sceneRef.current?.jump(action.playerId);
+        } else if (
+          action.type === "spin" &&
+          action.playerId &&
+          action.value &&
+          typeof action.value !== "boolean"
+        ) {
+          // Local gamepad spin stick → rotate that pad's cube (same path the
+          // phone's right stick uses via the backend).
+          const v = action.value as { x: number; y: number };
+          ensurePlayerExists(action.playerId);
+          sceneRef.current?.applySpin(action.playerId, v.x, v.y);
         } else if (action.type === "navigate") {
           const dir = (action.value as { direction: string } | undefined)
             ?.direction;
@@ -246,6 +277,27 @@ function AppController({
           // Right-stick rotation from a phone → spin that player's cube.
           if (msg.playerId)
             sceneRef.current?.applySpin(msg.playerId, msg.sx || 0, msg.sy || 0);
+          break;
+        }
+        case "accounts_updated": {
+          // Cache the device→account map, then recolor any live cube whose
+          // device is assigned (covers re-assignment while a cube is on screen;
+          // cubes created later are born correct via cosmeticFor()).
+          accountsRef.current = {
+            accounts: msg.accounts || [],
+            deviceMap: msg.deviceMap || {},
+          };
+          for (const [deviceId, accId] of Object.entries(
+            accountsRef.current.deviceMap,
+          )) {
+            const acc = accountsRef.current.accounts.find((a) => a.id === accId);
+            if (acc)
+              sceneRef.current?.setPlayerCosmetic(
+                deviceId,
+                acc.colorHex,
+                acc.gamertag,
+              );
+          }
           break;
         }
         case "error": {

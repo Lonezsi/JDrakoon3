@@ -1,18 +1,136 @@
 {
   "display": {
     "fullscreen": true,
-    "crtEffect": false,
+    "crtEffect": true,
     "volume": 80
   },
   "media": {
     "defaultVolume": 72,
     "cacheLimitGB": 20,
-    "preloadNext": true
+    "preloadNext": true,
+    "allowExtraction": false
   },
   "input": {
     "deadzone": 0.25,
     "repeatDelay": 300,
-    "repeatInterval": 60
+    "repeatInterval": 60,
+    "devices": {
+      "keyboard1": {
+        "enabled": true,
+        "deadzone": 0.15
+      },
+      "keyboard2": {
+        "enabled": true,
+        "deadzone": 0.15
+      },
+      "gamepad-0": {
+        "enabled": true,
+        "deadzone": 0.15,
+        "mapping": "Esperanzo"
+      }
+    },
+    "mappings": {
+      "Gamepad": {
+        "type": "gamepad",
+        "buttons": {
+          "navUp": 12,
+          "navDown": 13,
+          "navLeft": 14,
+          "navRight": 15,
+          "confirm": 0,
+          "back": 1,
+          "jump": 2
+        },
+        "keys": {},
+        "axes": {
+          "move": [
+            0,
+            1
+          ],
+          "spin": [
+            2,
+            3
+          ]
+        }
+      },
+      "WASD": {
+        "type": "keyboard",
+        "buttons": {},
+        "keys": {
+          "moveUp": "w",
+          "moveDown": "s",
+          "moveLeft": "a",
+          "moveRight": "d",
+          "navUp": "arrowup",
+          "navDown": "arrowdown",
+          "navLeft": "arrowleft",
+          "navRight": "arrowright",
+          "confirm": "enter",
+          "back": "escape",
+          "jump": "x"
+        },
+        "axes": {
+          "move": [
+            -1,
+            -1
+          ],
+          "spin": [
+            -1,
+            -1
+          ]
+        }
+      },
+      "UHJK": {
+        "type": "keyboard",
+        "buttons": {},
+        "keys": {
+          "moveUp": "u",
+          "moveDown": "j",
+          "moveLeft": "h",
+          "moveRight": "k",
+          "navUp": "",
+          "navDown": "",
+          "navLeft": "",
+          "navRight": "",
+          "confirm": "",
+          "back": "",
+          "jump": ""
+        },
+        "axes": {
+          "move": [
+            -1,
+            -1
+          ],
+          "spin": [
+            -1,
+            -1
+          ]
+        }
+      },
+      "Esperanzo": {
+        "type": "gamepad",
+        "buttons": {
+          "navUp": "h9:-1.000",
+          "navDown": "h9:0.143",
+          "navLeft": "h9:0.714",
+          "navRight": "h9:-0.429",
+          "confirm": 2,
+          "back": 1,
+          "jump": 3
+        },
+        "keys": {},
+        "axes": {
+          "move": [
+            0,
+            1
+          ],
+          "spin": [
+            2,
+            5
+          ]
+        }
+      }
+    }
   },
   "autoupdate": {
     "autoupdate": true,
@@ -20,28 +138,16 @@
     "updateSilently": false
   },
   "apps": {
-    "youtube": {
-      "name": "YouTube TV",
-      "launcher": "youtube://",
-      "hex": "#dc2626",
-      "icon": "Video"
+    "7-zip-file-manager-lnk": {
+      "name": "7-Zip File Manager.lnk",
+      "launcher": "C:\\ProgramData\\Microsoft\\Windows\\Start Menu\\Programs\\7-Zip\\7-Zip File Manager.lnk",
+      "hex": "#3b82f6",
+      "icon": "AppWindow"
     },
-    "plex": {
-      "name": "Plex",
-      "launcher": "",
-      "hex": "#eab308",
-      "icon": "Tv"
-    },
-    "retroarch": {
-      "name": "RetroArch",
-      "launcher": "",
-      "hex": "#475569",
-      "icon": "Gamepad"
-    },
-    "fl64": {
-      "name": "FL64",
-      "launcher": "C:\\Program Files\\Image-Line\\FL Studio 21\\FL64.exe",
-      "hex": "#f97316",
+    "about-java-lnk": {
+      "name": "About Java.lnk",
+      "launcher": "C:\\ProgramData\\Microsoft\\Windows\\Start Menu\\Programs\\Java\\About Java.lnk",
+      "hex": "#ef4444",
       "icon": "AppWindow"
     }
   },
@@ -49,19 +155,5 @@
   "libraryFolders": [
     "C:\\Program Files (x86)\\Steam\\steamapps\\common",
     "C:\\Roms"
-  ],
-  "_descriptions": {
-    "display.fullscreen": "Enable fullscreen mode",
-    "display.crtEffect": "Enable the retro CRT screen effect (scanlines, vignette, chroma shift)",
-    "display.volume": "Master volume (0–100)",
-    "media.defaultVolume": "Default media player volume (0–100)",
-    "media.cacheLimitGB": "Maximum disk space for video cache (GB)",
-    "media.preloadNext": "Pre‑fetch the next video in the queue",
-    "input.deadzone": "Minimum joystick movement before it registers (0–1)",
-    "input.repeatDelay": "Keyboard navigation repeat delay (ms)",
-    "input.repeatInterval": "Keyboard navigation repeat interval (ms)",
-    "autoupdate.autoupdate": "Automatically check for and apply updates",
-    "autoupdate.remindMeAboutUpdate": "Show a reminder when an update is available (ignored if autoupdate is on)",
-    "autoupdate.updateSilently": "Install updates in the background without any notification"
-  }
+  ]
 }

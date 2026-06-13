@@ -27,6 +27,36 @@ Set-Location $root
 function Step($m) { Write-Host "`n=== $m ===" -ForegroundColor Cyan }
 function Info($m) { Write-Host "  $m" -ForegroundColor DarkGray }
 
+# Ensure the WebView2 SDK DLLs (managed Core + WinForms wrappers and the native
+# WebView2Loader.dll) are present in .\webview2 so the launcher can host a
+# branded WebView2 window. Downloaded once from NuGet, then cached.
+function Ensure-WebView2 {
+    param([string]$rootDir)
+    $wvDir  = Join-Path $rootDir "webview2"
+    $core   = Join-Path $wvDir "Microsoft.Web.WebView2.Core.dll"
+    $wf     = Join-Path $wvDir "Microsoft.Web.WebView2.WinForms.dll"
+    $loader = Join-Path $wvDir "WebView2Loader.dll"
+    if ((Test-Path $core) -and (Test-Path $wf) -and (Test-Path $loader)) {
+        Info "WebView2 SDK present."
+        return $wvDir
+    }
+    New-Item -ItemType Directory -Force -Path $wvDir | Out-Null
+    $ver   = "1.0.2792.45"
+    $url   = "https://www.nuget.org/api/v2/package/Microsoft.Web.WebView2/$ver"
+    $nupkg = Join-Path $env:TEMP "webview2.$ver.zip"
+    $ex    = Join-Path $env:TEMP "webview2_extract"
+    Info "Downloading WebView2 SDK $ver from NuGet..."
+    [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+    Invoke-WebRequest -Uri $url -OutFile $nupkg -UseBasicParsing
+    Remove-Item $ex -Recurse -Force -ErrorAction SilentlyContinue
+    Expand-Archive -Path $nupkg -DestinationPath $ex -Force
+    Copy-Item (Join-Path $ex "lib\net462\Microsoft.Web.WebView2.Core.dll")     $wvDir -Force
+    Copy-Item (Join-Path $ex "lib\net462\Microsoft.Web.WebView2.WinForms.dll") $wvDir -Force
+    Copy-Item (Join-Path $ex "runtimes\win-x64\native\WebView2Loader.dll")     $wvDir -Force
+    Info "WebView2 SDK ready in webview2\."
+    return $wvDir
+}
+
 $release = Join-Path $root "release"
 $relBackend = Join-Path $release "backend"
 
@@ -84,16 +114,22 @@ Copy-Item (Join-Path $root "couch-remote\dist\*") (Join-Path $fb "phone") -Recur
 
 # --- 3. Compile the launcher (C# winexe: no console, icon embedded) ---------
 Step "Compiling JDrakoon3.exe (C# launcher)"
+$wvDir = Ensure-WebView2 $root
+$wvCore = Join-Path $wvDir "Microsoft.Web.WebView2.Core.dll"
+$wvWf   = Join-Path $wvDir "Microsoft.Web.WebView2.WinForms.dll"
+
 # Free the output file if a previous instance is running.
 try { taskkill /IM JDrakoon3.exe /F 2>$null | Out-Null } catch {}
 Start-Sleep -Milliseconds 200
 
 & $csc /nologo /target:winexe /platform:x64 /optimize+ `
+    /reference:"System.Windows.Forms.dll" /reference:"System.Drawing.dll" `
+    /reference:"$wvCore" /reference:"$wvWf" `
     /win32icon:"drakoon.ico" /out:"JDrakoon3.exe" "launcher.cs"
 if ($LASTEXITCODE -or -not (Test-Path (Join-Path $root "JDrakoon3.exe"))) {
     throw "csc failed to produce JDrakoon3.exe"
 }
-Info "Launcher compiled (GUI subsystem, icon embedded)."
+Info "Launcher compiled (GUI subsystem, icon embedded, WebView2 host)."
 
 # --- 4. Assemble the release\ folder ---------------------------------------
 Step "Assembling release\"
@@ -103,6 +139,11 @@ New-Item -ItemType Directory -Force -Path $relBackend | Out-Null
 Copy-Item (Join-Path $root "JDrakoon3.exe") $release -Force
 Copy-Item $nodeExe (Join-Path $release "node.exe") -Force
 Copy-Item $ico $release -Force
+
+# WebView2 wrapper DLLs + native loader must sit next to JDrakoon3.exe.
+Copy-Item (Join-Path $wvDir "Microsoft.Web.WebView2.Core.dll")     $release -Force
+Copy-Item (Join-Path $wvDir "Microsoft.Web.WebView2.WinForms.dll") $release -Force
+Copy-Item (Join-Path $wvDir "WebView2Loader.dll")                  $release -Force
 if (Test-Path (Join-Path $root "VERSION")) {
     Copy-Item (Join-Path $root "VERSION") $release -Force
 }

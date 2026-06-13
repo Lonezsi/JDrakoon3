@@ -192,6 +192,7 @@ export function TopBar({ clock, players }: TopBarProps) {
       <AccountsPanel
         open={openUsersPanel}
         onClose={() => setOpenUsersPanel(false)}
+        players={players}
       />
 
       {/* Update reminder modal */}

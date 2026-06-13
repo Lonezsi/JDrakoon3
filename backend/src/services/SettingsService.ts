@@ -12,7 +12,69 @@ export const defaultSettings: Settings = {
     preloadNext: true,
     allowExtraction: false,
   },
-  input: { deadzone: 0.25, repeatDelay: 300, repeatInterval: 60 },
+  // devices: per-device overrides keyed by id ("keyboard1", "gamepad-0", …),
+  // registered by the console when it detects a device (so the Settings modal
+  // grows a row per real device, not a hypothetical list).
+  // mappings: built-in profiles match the historical hardcoded bindings, so
+  // nothing changes until a device is pointed at a different/edited profile.
+  input: {
+    deadzone: 0.25,
+    repeatDelay: 300,
+    repeatInterval: 60,
+    devices: {},
+    mappings: {
+      Gamepad: {
+        type: "gamepad",
+        buttons: {
+          navUp: 12,
+          navDown: 13,
+          navLeft: 14,
+          navRight: 15,
+          confirm: 0,
+          back: 1,
+          jump: 2,
+        },
+        keys: {},
+        axes: { move: [0, 1], spin: [2, 3] },
+      },
+      WASD: {
+        type: "keyboard",
+        buttons: {},
+        keys: {
+          moveUp: "w",
+          moveDown: "s",
+          moveLeft: "a",
+          moveRight: "d",
+          navUp: "arrowup",
+          navDown: "arrowdown",
+          navLeft: "arrowleft",
+          navRight: "arrowright",
+          confirm: "enter",
+          back: "escape",
+          jump: "x",
+        },
+        axes: { move: [-1, -1], spin: [-1, -1] },
+      },
+      UHJK: {
+        type: "keyboard",
+        buttons: {},
+        keys: {
+          moveUp: "u",
+          moveDown: "j",
+          moveLeft: "h",
+          moveRight: "k",
+          navUp: "",
+          navDown: "",
+          navLeft: "",
+          navRight: "",
+          confirm: "",
+          back: "",
+          jump: "",
+        },
+        axes: { move: [-1, -1], spin: [-1, -1] },
+      },
+    },
+  },
   autoupdate: {
     autoupdate: true,
     remindMeAboutUpdate: true,

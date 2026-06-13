@@ -12,6 +12,14 @@ import {
 } from "lucide-react";
 import { subscribe } from "../../services/socket";
 import { IconPicker } from "./IconPicker";
+import { MappingEditor } from "./MappingEditor";
+import {
+  defaultProfileFor,
+  deviceKind,
+  playerToDeviceId,
+  type InputMapping,
+} from "../../services/deviceSettings";
+import type { Player } from "../../shared/types";
 
 interface Account {
   id: string;
@@ -25,6 +33,7 @@ interface Account {
 interface AccountsState {
   accounts: Account[];
   activeId: string | null;
+  deviceMap: Record<string, string>;
 }
 
 const PALETTE = [
@@ -58,14 +67,49 @@ function timeAgo(at: number) {
   return `${Math.floor(s / 86400)}d ago`;
 }
 
+function deviceLabel(p: Player) {
+  if (p.id === "AWSD") return "Keyboard 1";
+  if (p.id === "UHJK") return "Keyboard 2";
+  if (p.id.startsWith("gp"))
+    return `Controller ${(parseInt(p.id.slice(2), 10) || 0) + 1}`;
+  return p.name || p.id;
+}
+
 export function AccountsPanel({
   open,
   onClose,
+  players = [],
 }: {
   open: boolean;
   onClose: () => void;
+  players?: Player[];
 }) {
-  const [data, setData] = useState<AccountsState>({ accounts: [], activeId: null });
+  const [data, setData] = useState<AccountsState>({
+    accounts: [],
+    activeId: null,
+    deviceMap: {},
+  });
+  // Input config (#11): per-device mapping assignment + available profiles.
+  const [inputCfg, setInputCfg] = useState<{
+    devices: Record<string, { mapping?: string }>;
+    mappings: Record<string, InputMapping>;
+  }>({ devices: {}, mappings: {} });
+  const [mappingFor, setMappingFor] = useState<{
+    deviceId: string;
+    label: string;
+  } | null>(null);
+
+  const loadInput = useCallback(() => {
+    fetch("/api/settings")
+      .then((r) => r.json())
+      .then((s) =>
+        setInputCfg({
+          devices: s?.input?.devices || {},
+          mappings: s?.input?.mappings || {},
+        }),
+      )
+      .catch(() => {});
+  }, []);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const [form, setForm] = useState({ gamertag: "", colorHex: PALETTE[0], icon: "User" });
@@ -74,19 +118,31 @@ export function AccountsPanel({
   const load = useCallback(() => {
     fetch("/api/accounts")
       .then((r) => r.json())
-      .then((d) => setData({ accounts: d.accounts || [], activeId: d.activeId ?? null }))
+      .then((d) =>
+        setData({
+          accounts: d.accounts || [],
+          activeId: d.activeId ?? null,
+          deviceMap: d.deviceMap || {},
+        }),
+      )
       .catch(() => {});
   }, []);
 
   useEffect(() => {
     if (!open) return;
     load();
+    loadInput();
     const unsub = subscribe((msg) => {
       if (msg.type === "accounts_updated")
-        setData({ accounts: msg.accounts || [], activeId: msg.activeId ?? null });
+        setData({
+          accounts: msg.accounts || [],
+          activeId: msg.activeId ?? null,
+          deviceMap: msg.deviceMap || {},
+        });
+      if (msg.type === "settings_updated") loadInput();
     });
     return unsub;
-  }, [open, load]);
+  }, [open, load, loadInput]);
 
   const api = (url: string, method: string, body?: any) =>
     fetch(url, {
@@ -252,6 +308,121 @@ export function AccountsPanel({
             );
           })}
 
+          {/* Devices in the lobby → pick which account each one plays as */}
+          {players.length > 0 && (
+            <div className="pt-2">
+              <p className="px-1 pb-2 text-[10px] font-black uppercase tracking-widest text-gray-600">
+                Devices in lobby
+              </p>
+              <div className="space-y-2">
+                {players.map((p) => {
+                  const assignedId = data.deviceMap[p.id] || "";
+                  const acc = data.accounts.find((a) => a.id === assignedId);
+                  const dot = acc?.colorHex || p.color || "#444";
+                  // OS-level input devices (keyboards/gamepads) get a mapping
+                  // dropdown + editor; phones have virtual input — no mapping.
+                  const devId = playerToDeviceId(p.id);
+                  const kind = devId ? deviceKind(devId) : null;
+                  const profileNames = devId
+                    ? Object.entries(inputCfg.mappings)
+                        .filter(([, m]) => m.type === kind)
+                        .map(([n]) => n)
+                    : [];
+                  const assignedMapping = devId
+                    ? inputCfg.devices[devId]?.mapping ||
+                      defaultProfileFor(devId)
+                    : "";
+                  return (
+                    <div
+                      key={p.id}
+                      className="rounded-xl border border-white/8 bg-white/[0.02] px-3 py-2 space-y-1.5"
+                    >
+                      <div className="flex items-center gap-2.5">
+                        <span
+                          className="w-3 h-3 rounded-full flex-shrink-0 ring-1 ring-white/20"
+                          style={{ background: dot }}
+                        />
+                        <span className="text-xs font-bold text-gray-300 flex-1 min-w-0 truncate">
+                          {deviceLabel(p)}
+                        </span>
+                        <span className="text-[9px] font-black uppercase tracking-widest text-gray-600">
+                          {kind || p.deviceType || "phone"}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        <select
+                          value={assignedId}
+                          onChange={(e) =>
+                            api("/api/accounts/assign", "POST", {
+                              deviceId: p.id,
+                              accountId: e.target.value || null,
+                            })
+                          }
+                          title="Playing as"
+                          className="flex-1 min-w-0 bg-white/5 border border-white/10 rounded-lg px-2 py-1 text-[11px] font-bold text-white outline-none focus:border-indigo-500/40"
+                        >
+                          <option value="">— No account —</option>
+                          {data.accounts.map((a) => (
+                            <option key={a.id} value={a.id}>
+                              {a.gamertag}
+                            </option>
+                          ))}
+                        </select>
+                        {devId && (
+                          <>
+                            <select
+                              value={assignedMapping}
+                              onChange={(e) =>
+                                fetch("/api/settings", {
+                                  method: "PATCH",
+                                  headers: {
+                                    "Content-Type": "application/json",
+                                  },
+                                  body: JSON.stringify({
+                                    input: {
+                                      devices: {
+                                        [devId]: { mapping: e.target.value },
+                                      },
+                                    },
+                                  }),
+                                }).then(() => loadInput())
+                              }
+                              title="Control mapping"
+                              className="flex-1 min-w-0 bg-white/5 border border-white/10 rounded-lg px-2 py-1 text-[11px] font-bold text-indigo-200 outline-none focus:border-indigo-500/40"
+                            >
+                              {!profileNames.includes(assignedMapping) && (
+                                <option value={assignedMapping}>
+                                  {assignedMapping}
+                                </option>
+                              )}
+                              {profileNames.map((n) => (
+                                <option key={n} value={n}>
+                                  {n}
+                                </option>
+                              ))}
+                            </select>
+                            <button
+                              title="Edit mapping"
+                              onClick={() =>
+                                setMappingFor({
+                                  deviceId: devId,
+                                  label: deviceLabel(p),
+                                })
+                              }
+                              className="w-7 h-7 flex items-center justify-center rounded-lg bg-white/5 border border-white/10 text-gray-300 hover:text-white flex-shrink-0"
+                            >
+                              <Pencil size={11} />
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
           {/* inline create / edit form */}
           {editorOpen && (
             <div className="rounded-2xl border border-indigo-400/30 bg-indigo-500/5 p-3 space-y-3">
@@ -336,6 +507,17 @@ export function AccountsPanel({
           current={form.icon}
           onPick={(n) => setForm((f) => ({ ...f, icon: n }))}
           onClose={() => setPickingIcon(false)}
+        />
+      )}
+
+      {mappingFor && (
+        <MappingEditor
+          deviceId={mappingFor.deviceId}
+          label={mappingFor.label}
+          onClose={() => {
+            setMappingFor(null);
+            loadInput();
+          }}
         />
       )}
     </>

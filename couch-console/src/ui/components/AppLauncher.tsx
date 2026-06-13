@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import {
   ChevronRight,
   Plus,
@@ -11,7 +11,7 @@ import {
 import { launchApp } from "../../services/launcherService";
 import { notifService } from "../../services/notificationService";
 import { subscribe } from "../../services/socket";
-import { useFocusable } from "../../navigation/FocusContext";
+import { useFocus, useFocusable } from "../../navigation/FocusContext";
 import { IconPicker } from "./IconPicker";
 import type { AppDefinition } from "../../shared/types";
 
@@ -29,11 +29,15 @@ const ADD_PALETTE = [
 function AppCard({
   app,
   initial,
+  depth,
   onEdit,
   onDelete,
 }: {
   app: AppDefinition;
   initial: boolean;
+  /** Distance (in cards) from the focused card — 0 = focused/neutral.
+   *  Drives the row's depth effect: farther cards shrink, sink and dim. */
+  depth: number;
   onEdit: (app: AppDefinition) => void;
   onDelete: (app: AppDefinition) => void;
 }) {
@@ -41,6 +45,12 @@ function AppCard({
     onSelect: () => launchApp(app),
     initial,
   });
+
+  // Depth falloff. Applied per-card as a transform (NOT a mask on the blurred
+  // row container — mask-image kills backdrop-blur on Chromium).
+  const shrink = focused ? 1 : 1 - Math.min(depth * 0.045, 0.16);
+  const sinkPx = focused ? 0 : Math.min(depth * 5, 18);
+  const dim = focused ? 1 : 1 - Math.min(depth * 0.13, 0.5);
 
   // Icon resolution (set per-app in Settings):
   //  1. an image path/URL  -> <img> (local paths stream via /api/app-icon)
@@ -64,8 +74,14 @@ function AppCard({
     <div
       ref={ref}
       className={`group relative flex-shrink-0 transition-all duration-500 ${
-        focused ? "w-60 h-60 scale-110 z-10" : "w-44 h-44"
+        focused ? "w-60 h-60 z-10" : "w-44 h-44"
       }`}
+      style={{
+        transform: focused
+          ? "scale(1.1)"
+          : `scale(${shrink}) translateY(${sinkPx}px)`,
+        opacity: dim,
+      }}
     >
       {/* Edit / delete — mouse-only, shown on hover or when focused. Not part
           of the gamepad focus graph (managing apps is a pointer task). */}
@@ -486,6 +502,23 @@ export function AppLauncher() {
   const [editing, setEditing] = useState<AppDefinition | null>(null);
   const [picking, setPicking] = useState(false);
 
+  // Depth effect (#17): cards shrink/sink with distance from the focused card.
+  const { focusedId } = useFocus();
+  const focusedIdx = apps.findIndex((a) => `app-${a.id}` === focusedId);
+
+  // Edge gradients only make sense when the row actually overflows.
+  const rowRef = useRef<HTMLDivElement>(null);
+  const [overflowing, setOverflowing] = useState(false);
+  useEffect(() => {
+    const check = () => {
+      const el = rowRef.current;
+      setOverflowing(!!el && el.scrollWidth > el.clientWidth + 8);
+    };
+    check();
+    window.addEventListener("resize", check);
+    return () => window.removeEventListener("resize", check);
+  }, [apps.length]);
+
   // Apps live in settings (settings.apps) so they're editable from the
   // Settings modal; reload whenever any client changes settings.
   const loadApps = useCallback(() => {
@@ -625,12 +658,25 @@ export function AppLauncher() {
         </span>
       </div>
 
-      <div className="flex gap-5 items-center h-64 overflow-visible px-2">
+      <div className="relative">
+        {/* Edge fades — overlaid gradients (NOT mask-image, which kills the
+            cards' backdrop-blur on Chromium). Only when the row overflows. */}
+        {overflowing && (
+          <>
+            <div className="pointer-events-none absolute inset-y-0 left-0 w-20 z-20 bg-gradient-to-r from-[#04040a] to-transparent" />
+            <div className="pointer-events-none absolute inset-y-0 right-0 w-20 z-20 bg-gradient-to-l from-[#04040a] to-transparent" />
+          </>
+        )}
+        <div
+          ref={rowRef}
+          className="flex gap-5 items-center h-64 overflow-visible px-2"
+        >
         {apps.map((app, idx) => (
           <AppCard
             key={app.id}
             app={app}
             initial={idx === 0}
+            depth={focusedIdx === -1 ? 0 : Math.abs(idx - focusedIdx)}
             onEdit={setEditing}
             onDelete={deleteApp}
           />
@@ -650,6 +696,7 @@ export function AppLauncher() {
           <span className="text-[8px] mt-1 uppercase tracking-widest opacity-70">
             drag an .exe here
           </span>
+        </div>
         </div>
       </div>
 

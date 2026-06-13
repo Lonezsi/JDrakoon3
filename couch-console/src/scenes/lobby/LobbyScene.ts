@@ -231,6 +231,27 @@ export class LobbyScene {
     this.playerInputs.set(playerId, { x: vx, z: vz });
   }
 
+  /** Recolor / relabel an existing cube at runtime (e.g. a device picks an
+   *  account). playerData is the cosmetic source-of-truth that gets pushed back
+   *  to React each frame, so we update it here too — otherwise the next frame
+   *  would overwrite the visual change. No-op if the cube doesn't exist yet. */
+  public setPlayerCosmetic(playerId: string, color: string, name?: string) {
+    const state = this.players.get(playerId);
+    if (!state) return;
+    if (color) {
+      const mat = state.mesh.material as THREE.MeshStandardMaterial;
+      mat.color.set(color);
+      mat.emissive.set(color);
+      state.playerData.color = color;
+    }
+    if (name !== undefined) state.playerData.name = name;
+    // Rebuild the floating name label (text + tint).
+    const labelMat = state.label.material as THREE.SpriteMaterial;
+    labelMat.map?.dispose();
+    labelMat.map = createLabelTexture(state.playerData.name, state.playerData.color);
+    labelMat.needsUpdate = true;
+  }
+
   /** A drop-in point above the platform, slightly scattered so cubes don't stack. */
   private spawnPoint() {
     return {

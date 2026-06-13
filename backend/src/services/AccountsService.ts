@@ -33,13 +33,19 @@ export interface Account {
 export interface AccountsState {
   accounts: Account[];
   activeId: string | null;
+  // Maps a (stable) input-device id → account id, so a keyboard slot / gamepad
+  // "plays as" a chosen account and its lobby cube takes that account's color.
+  // Keyboards ("AWSD"/"UHJK") and gamepads ("gp0"…) have stable ids that persist
+  // across sessions; phone ids are per-session so their mapping simply won't
+  // match next time (harmless).
+  deviceMap: Record<string, string>;
 }
 
 const ACCOUNTS_FILE = path.join(CONFIG_DIR, "accounts.json");
 const HISTORY_CAP = 30;
 
 class AccountsService {
-  private state: AccountsState = { accounts: [], activeId: null };
+  private state: AccountsState = { accounts: [], activeId: null, deviceMap: {} };
   private subscribers: ((s: AccountsState) => void)[] = [];
 
   constructor() {
@@ -54,6 +60,7 @@ class AccountsService {
           this.state = {
             accounts: data.accounts,
             activeId: data.activeId ?? data.accounts[0]?.id ?? null,
+            deviceMap: data.deviceMap && typeof data.deviceMap === "object" ? data.deviceMap : {},
           };
         }
       }
@@ -120,12 +127,31 @@ class AccountsService {
     if (this.state.activeId === id) {
       this.state.activeId = this.state.accounts[0]?.id ?? null;
     }
+    // Drop any device assignments pointing at the deleted account.
+    for (const dev of Object.keys(this.state.deviceMap)) {
+      if (this.state.deviceMap[dev] === id) delete this.state.deviceMap[dev];
+    }
     if (this.state.accounts.length !== before) {
       this.save();
       this.notify();
       return true;
     }
     return false;
+  }
+
+  /** Assign an input device to an account (or pass null to clear it). */
+  assignDevice(deviceId: string, accountId: string | null) {
+    if (!deviceId) return false;
+    if (accountId === null || accountId === "") {
+      if (!(deviceId in this.state.deviceMap)) return false;
+      delete this.state.deviceMap[deviceId];
+    } else {
+      if (!this.state.accounts.some((a) => a.id === accountId)) return false;
+      this.state.deviceMap[deviceId] = accountId;
+    }
+    this.save();
+    this.notify();
+    return true;
   }
 
   setActive(id: string | null) {
