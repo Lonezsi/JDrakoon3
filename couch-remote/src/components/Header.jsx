@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
-import { Tv, WifiOff } from "lucide-react";
+import { WifiOff } from "lucide-react";
 import { useConsoleState } from "../hooks/useConsoleState";
+import AccountPicker from "./AccountPicker";
 
 function Pip({ color, pulse }) {
   return (
@@ -19,7 +20,7 @@ function Pip({ color, pulse }) {
   );
 }
 
-export default function Header({ user }) {
+export default function Header({ user, playerId }) {
   const state = useConsoleState();
   const [ping, setPing] = useState("--ms");
   const appName = state?.currentApp || "Home";
@@ -72,18 +73,7 @@ export default function Header({ user }) {
         <span className="text-[10px] text-slate-600 tabular-nums font-bold">
           {ping}
         </span>
-        <div
-          className="flex items-center gap-1.5 rounded-full px-3 py-1.5 border"
-          style={{
-            background: "rgba(99,102,241,0.10)",
-            borderColor: "rgba(99,102,241,0.25)",
-          }}
-        >
-          <Tv size={11} className="text-indigo-400" />
-          <span className="text-[10px] font-black text-indigo-400 uppercase tracking-wide">
-            TV
-          </span>
-        </div>
+        <AccountPicker playerId={playerId} />
       </div>
     </div>
   );

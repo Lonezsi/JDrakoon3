@@ -13,6 +13,24 @@ import { gameScanner } from "./services/GameScanner";
 import { settingsService } from "./services/SettingsService";
 import { accountsService } from "./services/AccountsService";
 import { launchApp, RunningApp } from "./services/launcher";
+import { focusKiosk } from "./services/kioskFocus";
+import { peerSync } from "./services/PeerSyncService";
+import { isLikelyGame } from "./utils/gameHeuristic";
+import { exec } from "child_process";
+import { isWindows, isMac } from "./platform";
+
+// Power off the host. Windows: shutdown.exe; macOS: AppleScript (no sudo for
+// the logged-in user); Linux: systemctl/shutdown (may need privileges).
+function systemShutdown() {
+  const cmd = isWindows
+    ? "shutdown /s /t 0"
+    : isMac
+      ? `osascript -e 'tell application "System Events" to shut down'`
+      : "systemctl poweroff || shutdown -h now";
+  exec(cmd, (err) => {
+    if (err) logger.error("[system] shutdown failed:", err.message);
+  });
+}
 
 type RateBucket = { tokens: number; lastRefill: number };
 
@@ -91,9 +109,22 @@ export function initSocketIO(server: HttpServer) {
   io.on("connection", (socket) => {
     logger.info("Socket.IO connection", socket.id);
 
-    const token =
-      (socket.handshake.auth && (socket.handshake.auth as any).token) ||
-      undefined;
+    const auth = (socket.handshake.auth || {}) as any;
+
+    // Peer console linking (PeerSyncService) authenticates by the shared sync
+    // code, not the local token. Handle it before the normal token gate and
+    // skip all the per-player wiring below.
+    if (auth.peer) {
+      if (!peerSync.getCode() || auth.code !== peerSync.getCode()) {
+        socket.emit("peer_rejected", { reason: "sync code mismatch" });
+        socket.disconnect(true);
+        return;
+      }
+      peerSync.attachIncomingPeer(socket as any);
+      return;
+    }
+
+    const token = auth.token || undefined;
     if (!verifyToken(token)) {
       logger.warn("Socket rejected (bad token)", socket.id);
       socket.emit("error", { code: "unauthorized" });
@@ -196,7 +227,11 @@ export function initSocketIO(server: HttpServer) {
         io.to("lobby").emit("action", { ...action, seq });
         lobbySync.handleAction(action as any);
         if (action.type === "jump") accountsService.record("jump");
+        if (action.type === "slam") accountsService.record("slam");
       }
+      // Mirror lobby input to a synced peer console (if linked) so each sees the
+      // other's players.
+      peerSync.forwardInput(actions as any[]);
       cb?.({ ok: true });
     });
 
@@ -291,8 +326,11 @@ export function initSocketIO(server: HttpServer) {
       if (!url || !validateUrl(url))
         return cb?.({ ok: false, error: "invalid_url" });
 
-      // requestedBy: if payload is an object with that field, use it; else fallback to playerId or "Phone"
+      // requestedBy: prefer the account gamertag this device is "playing as"
+      // (so the queue shows a real name); else the client-supplied name; else
+      // the playerId / "Phone".
       const requestedBy =
+        accountsService.gamertagForDevice(socket.data.playerId) ||
         (typeof payload === "object" && payload.requestedBy) ||
         socket.data.playerId ||
         "Phone";
@@ -443,6 +481,11 @@ export function initSocketIO(server: HttpServer) {
         const exePath = payload.launcher;
         if (!exePath) return cb?.({ ok: false, error: "no_launcher_path" });
 
+        // Is this a game (uses a gamepad) or a regular app (needs a cursor)?
+        // The console uses this to auto-enable gamepad mouse mode for non-games.
+        const appCfg = settingsService.get().apps?.[payload.appId];
+        const isGame = isLikelyGame(appCfg?.name || payload.appId, exePath);
+
         try {
           if (currentApp) {
             currentApp.kill();
@@ -450,7 +493,7 @@ export function initSocketIO(server: HttpServer) {
           }
 
           // Tell every client a launch is in progress → loading overlay
-          io.to("lobby").emit("app_launching", { appId: payload.appId });
+          io.to("lobby").emit("app_launching", { appId: payload.appId, isGame });
           accountsService.record("app", payload.appId);
 
           //watchApp(currentApp?.pid ?? -1);
@@ -461,6 +504,7 @@ export function initSocketIO(server: HttpServer) {
               io.to("lobby").emit("app_launched", {
                 appId: payload.appId,
                 focused,
+                isGame,
               });
               inputService.setFocus("fullscreen");
             },
@@ -468,6 +512,7 @@ export function initSocketIO(server: HttpServer) {
               currentApp = null;
               io.emit("app_closed", { appId: payload.appId, code });
               inputService.setFocus("menu");
+              focusKiosk(); // raise the dashboard back to the foreground
             },
           });
 
@@ -489,7 +534,65 @@ export function initSocketIO(server: HttpServer) {
       }
       io.emit("app_closed", {});
       inputService.setFocus("menu");
+      focusKiosk(); // raise the dashboard back to the foreground
       cb?.({ ok: true });
+    });
+
+    // Phone "system" buttons (home / settings / back / shutdown).
+    socket.on("system", (payload: any, cb?: Function) => {
+      const action = String(payload?.action || "");
+      switch (action) {
+        case "home":
+          // Close any running app and return the dashboard to its home screen,
+          // then raise the kiosk window so the dashboard is actually visible +
+          // focused (Windows won't reliably hand focus back to our borderless
+          // window when the foreground app dies).
+          if (currentApp) {
+            currentApp.kill();
+            currentApp = null;
+          }
+          inputService.setFocus("menu");
+          io.emit("app_closed", {});
+          io.to("lobby").emit("home");
+          focusKiosk();
+          break;
+        case "settings":
+          io.to("lobby").emit("open_settings");
+          break;
+        case "back":
+          io.to("lobby").emit("back");
+          break;
+        case "shutdown":
+          logger.warn("[system] shutdown requested from phone");
+          io.to("lobby").emit("shutting_down");
+          systemShutdown();
+          break;
+        default:
+          break;
+      }
+      cb?.({ ok: true });
+    });
+
+    // ── Peer console sync (PeerSyncService) control, from the dashboard UI ──
+    socket.on("sync_set_code", (p: any, cb?: Function) => {
+      peerSync.setCode(typeof p === "string" ? p : p?.code || "");
+      cb?.({ ok: true, status: peerSync.getStatus() });
+    });
+    socket.on("sync_connect", (p: any, cb?: Function) => {
+      peerSync.connect(p?.url || "", p?.code || peerSync.getCode());
+      cb?.({ ok: true, status: peerSync.getStatus() });
+    });
+    socket.on("sync_disconnect", (cb?: Function) => {
+      peerSync.disconnect();
+      cb?.({ ok: true });
+    });
+    socket.on("sync_status", (cb?: Function) => {
+      cb?.(peerSync.getStatus());
+    });
+    // Console-local lobby input (keyboard/gamepad cubes) → forward to the peer
+    // only (the console already applied it to its own scene; don't echo back).
+    socket.on("lobby_input", (p: any) => {
+      if (Array.isArray(p?.actions)) peerSync.forwardInput(p.actions);
     });
 
     // ---- ownership events (unchanged) ----
@@ -585,6 +688,31 @@ export function initSocketIO(server: HttpServer) {
       },
     );
 
+    // Remove a device from the lobby on request (the dashboard's per-device
+    // "disconnect" button). Phones are socket-backed → tell them they were
+    // kicked (so they stop auto-reconnecting) and drop the connection; their
+    // own disconnect handler emits player_left. Console-local devices
+    // (keyboards/gamepads) have no socket → just broadcast player_left so the
+    // console removes the cube.
+    socket.on("kick_player", (payload: any, cb?: Function) => {
+      const pid = payload?.playerId;
+      if (!pid) return cb?.({ ok: false });
+      let socketBacked = false;
+      for (const s of io.sockets.sockets.values()) {
+        if (s.data?.playerId === pid) {
+          s.emit("kicked");
+          s.disconnect(true);
+          socketBacked = true;
+        }
+      }
+      if (!socketBacked) {
+        lobbySync.removePlayer(pid);
+        io.to("lobby").emit("player_left", { playerId: pid });
+      }
+      logger.info(`[kick] removed player ${pid} from lobby`);
+      cb?.({ ok: true });
+    });
+
     socket.on("disconnect", () => {
       const pid = socket.data.playerId as string | undefined;
       try {
@@ -598,6 +726,24 @@ export function initSocketIO(server: HttpServer) {
       }
     });
   });
+
+  // Apply a synced peer's lobby input here: re-emit as normal `action`s with
+  // "peer:"-prefixed player ids so their cubes appear locally without colliding
+  // with our own players' ids. Lobby actions only (never menu navigation).
+  peerSync.onApplyRemote((actions) => {
+    for (const a of actions) {
+      if (!a || !["move", "jump", "slam", "spin"].includes(a.type)) continue;
+      const base =
+        typeof a.playerId === "string"
+          ? a.playerId.replace(/^peer:/, "")
+          : "guest";
+      io.to("lobby").emit("action", { ...a, playerId: `peer:${base}` });
+    }
+  });
+  // Push link status to the dashboard whenever it changes.
+  peerSync.subscribe(() =>
+    io.to("lobby").emit("sync_status", peerSync.getStatus()),
+  );
 
   lobbySync.subscribe((players, meta) => {
     const payload = { players, meta };

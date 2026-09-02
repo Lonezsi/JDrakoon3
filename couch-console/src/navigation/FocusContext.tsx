@@ -33,6 +33,9 @@ interface FocusEntry {
   onMoveRef: React.MutableRefObject<((dir: Direction) => boolean) | undefined>;
   initial: boolean;
   order: number;
+  /** Skip the engine's native scrollIntoView on focus (the carousel positions
+   *  itself with translateX; a native scroll fights it and causes a jump). */
+  noScroll?: boolean;
 }
 
 interface FocusContextValue {
@@ -131,7 +134,8 @@ export function FocusProvider({ children }: { children: ReactNode }) {
     if (!cur?.ref.current) {
       const first = entries.sort((a, b) => a.order - b.order)[0];
       setFocus(layer, first.id);
-      first.ref.current?.scrollIntoView({ block: "nearest", inline: "nearest" });
+      if (!first.noScroll)
+        first.ref.current?.scrollIntoView({ block: "nearest", inline: "nearest" });
       return;
     }
 
@@ -174,11 +178,12 @@ export function FocusProvider({ children }: { children: ReactNode }) {
 
     if (best) {
       setFocus(layer, best.id);
-      best.ref.current?.scrollIntoView({
-        block: "nearest",
-        inline: "nearest",
-        behavior: "smooth",
-      });
+      if (!best.noScroll)
+        best.ref.current?.scrollIntoView({
+          block: "nearest",
+          inline: "nearest",
+          behavior: "smooth",
+        });
     }
   }, [setFocus]);
 
@@ -258,6 +263,12 @@ interface UseFocusableOptions {
   onSelect?: () => void;
   onMove?: (dir: Direction) => boolean;
   initial?: boolean;
+  /** When false, the element is not registered as a navigation target (so it
+   *  can't be focused). Defaults to true. */
+  enabled?: boolean;
+  /** Skip the engine's scrollIntoView on focus (for self-positioning lists like
+   *  the app carousel, which would otherwise jump). */
+  noScroll?: boolean;
 }
 
 // Marks an element as a navigation target. Returns a ref to attach and
@@ -266,7 +277,14 @@ export function useFocusable<T extends HTMLElement = HTMLElement>(
   id: string,
   options: UseFocusableOptions = {},
 ) {
-  const { layer = "root", onSelect, onMove, initial = false } = options;
+  const {
+    layer = "root",
+    onSelect,
+    onMove,
+    initial = false,
+    enabled = true,
+    noScroll = false,
+  } = options;
   const ctx = useFocus();
 
   const ref = useRef<T | null>(null);
@@ -276,6 +294,7 @@ export function useFocusable<T extends HTMLElement = HTMLElement>(
   onMoveRef.current = onMove;
 
   useEffect(() => {
+    if (!enabled) return;
     const entry: FocusEntry = {
       id,
       layer,
@@ -284,11 +303,12 @@ export function useFocusable<T extends HTMLElement = HTMLElement>(
       onMoveRef,
       initial,
       order: 0,
+      noScroll,
     };
     return ctx.register(entry);
-    // ctx methods are stable; re-register only on id/layer change
+    // ctx methods are stable; re-register only on id/layer/enabled change
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id, layer]);
+  }, [id, layer, enabled, noScroll]);
 
   return { ref, focused: ctx.focusedId === id };
 }

@@ -12,6 +12,7 @@ export interface AccountStats {
   appsLaunched: number;
   videosQueued: number;
   jumps: number;
+  slams: number;
 }
 
 export interface AccountHistoryItem {
@@ -100,7 +101,7 @@ class AccountsService {
       colorHex: input.colorHex || "#6366f1",
       icon: input.icon || "User",
       createdAt: Date.now(),
-      stats: { appsLaunched: 0, videosQueued: 0, jumps: 0 },
+      stats: { appsLaunched: 0, videosQueued: 0, jumps: 0, slams: 0 },
       history: [],
     };
     this.state.accounts.push(acc);
@@ -162,17 +163,29 @@ class AccountsService {
     return true;
   }
 
+  /** Gamertag of the account a device is "playing as" (via deviceMap), else
+   *  null. Used to attribute queued media to the real account name. */
+  gamertagForDevice(deviceId: string | undefined | null): string | null {
+    if (!deviceId) return null;
+    const accId = this.state.deviceMap[deviceId];
+    if (!accId) return null;
+    return this.state.accounts.find((a) => a.id === accId)?.gamertag ?? null;
+  }
+
   /** Record an event against the active account. `app`/`queue` add a history
    *  row; `jump` only bumps the counter (too frequent for history). */
-  record(type: "app" | "queue" | "jump", label = "") {
+  record(type: "app" | "queue" | "jump" | "slam", label = "") {
     const acc = this.state.accounts.find((a) => a.id === this.state.activeId);
     if (!acc) return; // nobody's "playing as" anyone yet — silently ignore
 
     if (type === "app") acc.stats.appsLaunched++;
     else if (type === "queue") acc.stats.videosQueued++;
     else if (type === "jump") acc.stats.jumps++;
+    // `slams` was added later — tolerate accounts persisted before it existed.
+    else if (type === "slam") acc.stats.slams = (acc.stats.slams || 0) + 1;
 
-    if (type !== "jump") {
+    // jump/slam are too frequent to log to history — counter only.
+    if (type !== "jump" && type !== "slam") {
       acc.history.unshift({ type, label, at: Date.now() });
       if (acc.history.length > HISTORY_CAP) acc.history.length = HISTORY_CAP;
     }

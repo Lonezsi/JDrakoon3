@@ -44,12 +44,13 @@ export default function LoginScreen({ onJoin }) {
 
   return (
     <div
-      className="min-h-screen flex flex-col items-center justify-center px-6 py-10"
+      className="login-root min-h-screen flex items-center justify-center px-6 py-10 overflow-y-auto"
       style={{ background: "#06060c" }}
     >
-      <div className="mb-10 text-center">
+      <div className="login-card w-full max-w-sm flex flex-col items-center">
+      <div className="login-header mb-10 text-center">
         <div
-          className="w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-xl"
+          className="login-logo w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-xl"
           style={{ background: "#6366f1", boxShadow: "0 12px 32px #6366f150" }}
         >
           <img src="drakoon.svg" alt="drakoon" />
@@ -62,7 +63,7 @@ export default function LoginScreen({ onJoin }) {
         </p>
       </div>
 
-      <div className="w-full max-w-sm space-y-5">
+      <div className="login-form w-full max-w-sm space-y-5">
         <div>
           <label className="block text-[10px] font-black uppercase tracking-widest text-slate-500 mb-2">
             Your Name
@@ -208,10 +209,29 @@ export default function LoginScreen({ onJoin }) {
           Continue as Guest
         </button>
       </div>
+      </div>
 
       <style>{`
         @keyframes shake { 0%,100%{transform:translateX(0)} 20%,60%{transform:translateX(-6px)} 40%,80%{transform:translateX(6px)} }
         .error-shake { animation: shake 0.35s ease; }
+
+        /* Landscape (rotated phone): the column is too tall — lay the header
+           beside the form, shrink the header, and tighten the form so it all
+           fits without clipping. overflow-y-auto on the root catches anything. */
+        @media (orientation: landscape) {
+          .login-root { padding-top: 16px; padding-bottom: 16px; }
+          .login-card {
+            flex-direction: row;
+            align-items: center;
+            justify-content: center;
+            gap: 32px;
+            max-width: 720px;
+          }
+          .login-header { margin-bottom: 0; flex-shrink: 0; }
+          .login-logo { width: 48px; height: 48px; margin-bottom: 8px; }
+          .login-form { max-width: 380px; }
+          .login-form > * + * { margin-top: 0.7rem !important; }
+        }
       `}</style>
     </div>
   );

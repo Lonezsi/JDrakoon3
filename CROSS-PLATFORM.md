@@ -15,11 +15,11 @@ Everything dispatches off [`backend/src/platform/index.ts`](backend/src/platform
 | --- | --- | --- | --- |
 | Backend + web UIs | ✅ | ✅ | ✅ |
 | OS mouse/keyboard (phone control) | ✅ PowerShell + Win32 | ⚠️ osascript (keys/text); mouse needs `cliclick` | ⚠️ `xdotool` (X11) / `ydotool` (Wayland) |
-| Launch apps | ✅ window-foreground + lifecycle | ✅ `open` (`-W` for `.app`) | ✅ spawn / `xdg-open` |
+| Launch apps | ✅ window-foreground + lifecycle | ✅ `open` (`-W` for `.app`) | ✅ spawn / PATH cmd / `xdg-open` |
 | yt-dlp (optional queue extraction) | ✅ `yt-dlp.exe` | ✅ `yt-dlp_macos` | ✅ `yt-dlp` |
-| Installed-apps picker | ✅ Start Menu + Steam | Steam only | Steam only |
-| Branded kiosk launcher | ✅ WebView2 (C#) | ❌ run backend + browser manually | ❌ run backend + browser manually |
-| One-click installer | ✅ Inno Setup | ❌ (see below) | ❌ (see below) |
+| Installed-apps picker | ✅ Start Menu + Steam | ✅ `/Applications/*.app` + Steam | ✅ `.desktop` entries + Steam |
+| One-command launcher | ✅ WebView2 (C#) | ✅ `launcher.mjs` (Chromium `--kiosk`) | ✅ `launcher.mjs` (Chromium `--kiosk`) |
+| Packaged installer | ✅ Inno Setup | ⚠️ run scripts (dmg TODO) | ⚠️ run scripts + `.desktop` (AppImage TODO) |
 
 ## Input backends
 
@@ -40,22 +40,34 @@ and OS-control no-ops cleanly — the lobby/cube and the rest of the app still r
 
 ## Running on macOS / Linux today
 
-There's no native launcher/installer yet, so run it like a dev build:
+After a one-time build, it's a single command — [`launcher.mjs`](launcher.mjs)
+does the whole lifecycle (free port → start backend → wait → open a Chromium
+browser in `--kiosk` → tear down when either closes), mirroring `launcher.cs`:
 
 ```bash
-# backend (serves the built UIs on :3001)
-cd backend && npm install && npm run build && NODE_ENV=production node dist/index.js
-# then open http://127.0.0.1:3001 in any browser (fullscreen / F11 for kiosk feel)
+# one-time build (root)
+cd backend && npm install && npm run build && cd ..
+cd couch-console && npm install && npm run build && cd ..
+cd couch-remote  && npm install && npm run build && cd ..
+# assemble backend/frontend-build the way build-release.ps1 does, then:
+
+node launcher.mjs        # needs Node 18+ and Chrome/Chromium/Edge/Brave
 ```
 
-The phone UI works the same way: browse to `http://<this-machine-ip>:3001/phone`.
+Convenience wrappers live in [`scripts/`](scripts/): `run-macos.command`
+(double-clickable), `run-linux.sh`, and `jdrakoon3.desktop` (menu/autostart
+entry — the Linux analogue of the Windows Run-key autorun). Logs go to
+`~/.jdrakoon3/`. The phone UI is `http://<this-machine-ip>:3001/phone`.
+
+If no Chromium-family browser is found, the launcher opens the default browser
+(no kiosk). Phone OS-control needs the per-OS helper (see Input backends above).
 
 ## Not yet done (future work)
 
-- **macOS launcher/packaging** — a small Swift/Obj-C or Electron host showing the
-  app fullscreen with our icon, packaged as `.app` + `.dmg`. The WebView2 host in
-  `launcher.cs` is the Windows analogue; macOS would use `WKWebView`.
-- **Linux launcher/packaging** — a WebKitGTK host (or Electron) packaged as an
-  **AppImage**; autostart via a `.desktop` entry in `~/.config/autostart`.
-- **App discovery** — enumerate `.desktop` entries (Linux) and `/Applications`
-  (macOS) for the "Add System" picker, mirroring the Windows Start Menu scan.
+- **Native packaging** — the launcher + run scripts make it one-command, but
+  there's no single distributable yet:
+  - **macOS** `.app` + `.dmg` (the run script is the stopgap). A fully branded
+    chrome-less window would use `WKWebView` instead of a Chromium kiosk.
+  - **Linux AppImage** bundling Node + the payload (the `.desktop` is the stopgap).
+  Both need to bundle a per-OS Node runtime (the Windows release bundles
+  `node.exe`); these must be produced/tested on the target OS.

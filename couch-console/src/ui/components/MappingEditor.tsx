@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Check, Gamepad2, Keyboard, X, Zap } from "lucide-react";
 import { notifService } from "../../services/notificationService";
+import { Dropdown } from "./Dropdown";
 import {
   defaultProfileFor,
   deviceKind,
@@ -33,6 +34,7 @@ const BUTTON_CONTROLS_GAMEPAD = [
   ["confirm", "Confirm"],
   ["back", "Back"],
   ["jump", "Jump"],
+  ["slam", "Slam"],
 ] as const;
 
 const KEY_CONTROLS_KEYBOARD = [
@@ -47,6 +49,7 @@ const KEY_CONTROLS_KEYBOARD = [
   ["confirm", "Confirm"],
   ["back", "Back"],
   ["jump", "Jump"],
+  ["slam", "Slam"],
 ] as const;
 
 const AXES_CONTROLS = [
@@ -320,7 +323,7 @@ export function MappingEditor({
             {/* dropdown choice */}
             {type === "gamepad" ? (
               isAxes ? (
-                <select
+                <Dropdown
                   value={
                     bindingLabel(id) === "—"
                       ? ""
@@ -330,23 +333,22 @@ export function MappingEditor({
                             : working.axes.spin,
                         )
                   }
-                  onChange={(e) =>
+                  onChange={(v) =>
                     bindNoAdvance(
                       id,
-                      e.target.value
-                        ? (JSON.parse(e.target.value) as [number, number])
+                      v
+                        ? (JSON.parse(v) as [number, number])
                         : ([-1, -1] as [number, number]),
                     )
                   }
-                  className="bg-white/5 border border-white/10 rounded-lg px-2 py-1 text-[11px] font-bold text-white outline-none focus:border-indigo-500/40"
-                >
-                  <option value="">Unbound</option>
-                  {AXIS_PAIRS.map((p) => (
-                    <option key={p.join()} value={JSON.stringify(p)}>
-                      Axes {p[0]} + {p[1]}
-                    </option>
-                  ))}
-                </select>
+                  options={[
+                    { value: "", label: "Unbound" },
+                    ...AXIS_PAIRS.map((p) => ({
+                      value: JSON.stringify(p),
+                      label: `Axes ${p[0]} + ${p[1]}`,
+                    })),
+                  ]}
+                />
               ) : showChip ? (
                 // Bound to an axis-half / POV hat (non-standard pad) — not a
                 // dropdown choice; show what was captured.
@@ -354,24 +356,21 @@ export function MappingEditor({
                   {bindingLabel(id)}
                 </span>
               ) : (
-                <select
+                <Dropdown
                   value={String(
                     typeof working.buttons[id] === "number"
                       ? working.buttons[id]
                       : -1,
                   )}
-                  onChange={(e) =>
-                    bindNoAdvance(id, parseInt(e.target.value, 10))
-                  }
-                  className="bg-white/5 border border-white/10 rounded-lg px-2 py-1 text-[11px] font-bold text-white outline-none focus:border-indigo-500/40"
-                >
-                  <option value="-1">Unbound</option>
-                  {Array.from({ length: MAX_BUTTONS }, (_, i) => (
-                    <option key={i} value={i}>
-                      B{i}
-                    </option>
-                  ))}
-                </select>
+                  onChange={(v) => bindNoAdvance(id, parseInt(v, 10))}
+                  options={[
+                    { value: "-1", label: "Unbound" },
+                    ...Array.from({ length: MAX_BUTTONS }, (_, i) => ({
+                      value: String(i),
+                      label: `B${i}`,
+                    })),
+                  ]}
+                />
               )
             ) : (
               <span className="px-2 py-1 rounded-lg bg-white/5 border border-white/10 text-[11px] font-mono text-white min-w-[52px] text-center">
@@ -457,18 +456,15 @@ export function MappingEditor({
 
         {/* profile picker + name */}
         <div className="flex items-center gap-2 px-6 py-3 border-b border-white/5">
-          <select
+          <Dropdown
             value={profiles[profileName] ? profileName : ""}
-            onChange={(e) => e.target.value && pickProfile(e.target.value)}
-            className="bg-white/5 border border-white/10 rounded-lg px-2 py-1.5 text-[11px] font-bold text-white outline-none focus:border-indigo-500/40"
-          >
-            {!profiles[profileName] && <option value="">(new)</option>}
-            {Object.keys(profiles).map((n) => (
-              <option key={n} value={n}>
-                {n}
-              </option>
-            ))}
-          </select>
+            onChange={(v) => v && pickProfile(v)}
+            placeholder="(new)"
+            options={[
+              ...(!profiles[profileName] ? [{ value: "", label: "(new)" }] : []),
+              ...Object.keys(profiles).map((n) => ({ value: n, label: n })),
+            ]}
+          />
           <input
             value={profileName}
             onChange={(e) => setProfileName(e.target.value)}

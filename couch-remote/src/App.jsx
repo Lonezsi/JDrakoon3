@@ -18,6 +18,8 @@ export default function App() {
   const [screen, setScreen] = useState("LOGIN");
   const [tab, setTab] = useState("REMOTE");
   const [user, setUser] = useState(null);
+  // Our backend-assigned player id (= device id for account assignment).
+  const [playerId, setPlayerId] = useState(null);
   // Immersive mode: hide the header (and go browser-fullscreen where the
   // API exists — iPhone Safari doesn't support it, so hiding the header is
   // the part that always works).
@@ -38,7 +40,12 @@ export default function App() {
 
   const join = (name, color) => {
     setUser({ name, color });
-    connectSocket(null, { name, color });
+    const conn = connectSocket(null, { name, color });
+    // Capture our player id from the join ack so the account picker can assign
+    // this device.
+    conn.subscribe((msg) => {
+      if (msg.type === "joined" && msg.playerId) setPlayerId(msg.playerId);
+    });
     setScreen("MAIN");
   };
 
@@ -67,7 +74,7 @@ export default function App() {
         margin: "0 auto",
       }}
     >
-      {!immersive && <Header user={user} />}
+      {!immersive && <Header user={user} playerId={playerId} />}
 
       <div className="flex-1 overflow-y-auto min-h-0">{tabContent()}</div>
 

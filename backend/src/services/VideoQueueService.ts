@@ -70,8 +70,23 @@ class VideoQueueService {
       return null;
     }
 
+    // DRM-protected services can't be extracted for playback at all (yt-dlp
+    // can't fetch the encrypted streams), so fail fast with a clear message
+    // rather than a slow, cryptic yt-dlp error. NOTE: SoundCloud, YouTube,
+    // Vimeo, Bandcamp etc. ARE supported (with extraction on) — not listed here.
+    const DRM_HOSTS =
+      /(?:open\.)?spotify\.com|music\.apple\.com|tidal\.com|deezer\.com|netflix\.com|hbomax\.com|max\.com|disneyplus\.com|primevideo\.com/i;
+    if (DRM_HOSTS.test(url)) {
+      this.notifyError(
+        pendingId,
+        url,
+        "That service is DRM-protected and can't be played here. Try a direct media file, or a YouTube / SoundCloud / Vimeo link instead.",
+      );
+      return null;
+    }
+
     // Legal gate: a direct media file is always fine, but extracting from a
-    // streaming site (YouTube etc.) requires the user to opt in via Settings.
+    // streaming site (YouTube, SoundCloud, …) requires the user to opt in.
     const isDirectMedia = /\.(mp3|mp4|m4a|webm|ogg|oga|flac|wav|mov|mkv)(\?.*)?$/i.test(
       url,
     );

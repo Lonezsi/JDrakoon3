@@ -76,6 +76,13 @@ export function connect(
     "app_closed",
     "settings_updated",
     "accounts_updated",
+    // phone "system" buttons → console actions
+    "home",
+    "back",
+    "open_settings",
+    "shutting_down",
+    // peer console link status
+    "sync_status",
   ];
   events.forEach((event) => {
     socket!.on(event, (payload: any) => notify({ type: event, ...payload }));

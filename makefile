@@ -5,10 +5,10 @@ CONSOLE_DIR = couch-console
 REMOTE_DIR = couch-remote
 FRONTEND_BUILD = $(BACKEND_DIR)\\frontend-build
 
-.PHONY: build clean run dev all help frontend backend console remote kill
+.PHONY: build clean run dev all help frontend backend console remote kill release
 
 help:
-	@echo Available targets: build, clean, run, dev, frontend, backend
+	@echo Available targets: build, clean, run, dev, frontend, backend, release
 
 all: build run
 
@@ -71,3 +71,10 @@ unused:
 	cd $(BACKEND_DIR) && npx depcheck
 	cd $(CONSOLE_DIR) && npx depcheck
 	cd $(REMOTE_DIR) && npx depcheck
+
+release:
+	@echo Building and publishing release...
+	powershell -ExecutionPolicy Bypass -File .\release.ps1
+
+#powershell -ExecutionPolicy Bypass -File .\release.ps1 -Version 3.0.6   # bump first
+#powershell -ExecutionPolicy Bypass -File .\release.ps1 -Force     # overwrite an existing release

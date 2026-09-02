@@ -2,13 +2,13 @@
   "display": {
     "fullscreen": true,
     "crtEffect": true,
+    "crtIntensity": 100,
     "volume": 80
   },
   "media": {
     "defaultVolume": 72,
-    "cacheLimitGB": 20,
-    "preloadNext": true,
-    "allowExtraction": false
+    "allowExtraction": true,
+    "hideQueueDisclaimer": true
   },
   "input": {
     "deadzone": 0.25,
@@ -17,11 +17,13 @@
     "devices": {
       "keyboard1": {
         "enabled": true,
-        "deadzone": 0.15
+        "deadzone": 0.15,
+        "mapping": "UHJK"
       },
       "keyboard2": {
         "enabled": true,
-        "deadzone": 0.15
+        "deadzone": 0.15,
+        "mapping": "WASD"
       },
       "gamepad-0": {
         "enabled": true,
@@ -39,7 +41,8 @@
           "navRight": 15,
           "confirm": 0,
           "back": 1,
-          "jump": 2
+          "jump": 2,
+          "slam": 3
         },
         "keys": {},
         "axes": {
@@ -67,7 +70,8 @@
           "navRight": "arrowright",
           "confirm": "enter",
           "back": "escape",
-          "jump": "x"
+          "jump": "x",
+          "slam": "c"
         },
         "axes": {
           "move": [
@@ -94,7 +98,8 @@
           "navRight": "",
           "confirm": "",
           "back": "",
-          "jump": ""
+          "jump": "n",
+          "slam": "m"
         },
         "axes": {
           "move": [
@@ -116,7 +121,8 @@
           "navRight": "h9:-0.429",
           "confirm": 2,
           "back": 1,
-          "jump": 3
+          "jump": 3,
+          "slam": 0
         },
         "keys": {},
         "axes": {
@@ -125,8 +131,8 @@
             1
           ],
           "spin": [
-            2,
-            5
+            -1,
+            -1
           ]
         }
       }
@@ -137,18 +143,24 @@
     "remindMeAboutUpdate": true,
     "updateSilently": false
   },
+  "system": {
+    "autostart": false
+  },
+  "sync": {
+    "code": ""
+  },
   "apps": {
-    "7-zip-file-manager-lnk": {
-      "name": "7-Zip File Manager.lnk",
-      "launcher": "C:\\ProgramData\\Microsoft\\Windows\\Start Menu\\Programs\\7-Zip\\7-Zip File Manager.lnk",
-      "hex": "#3b82f6",
-      "icon": "AppWindow"
+    "tlauncher": {
+      "name": "TLauncher",
+      "launcher": "C:\\ProgramData\\Microsoft\\Windows\\Start Menu\\Programs\\TLauncher\\TLauncher.lnk",
+      "hex": "#6366f1",
+      "icon": "C:\\ProgramData\\Microsoft\\Windows\\Start Menu\\Programs\\TLauncher\\TLauncher.lnk"
     },
-    "about-java-lnk": {
-      "name": "About Java.lnk",
-      "launcher": "C:\\ProgramData\\Microsoft\\Windows\\Start Menu\\Programs\\Java\\About Java.lnk",
-      "hex": "#ef4444",
-      "icon": "AppWindow"
+    "android-studio": {
+      "name": "Android Studio",
+      "launcher": "C:\\ProgramData\\Microsoft\\Windows\\Start Menu\\Programs\\Android Studio\\Android Studio.lnk",
+      "hex": "#d7e5f6",
+      "icon": "C:\\ProgramData\\Microsoft\\Windows\\Start Menu\\Programs\\Android Studio\\Android Studio.lnk"
     }
   },
   "players": [],

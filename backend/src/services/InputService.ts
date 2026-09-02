@@ -131,12 +131,13 @@ class InputService {
         actions.push({ type: "navigate", playerId, direction: "right" });
       if (buttons.a) actions.push({ type: "confirm", playerId });
       if (buttons.b) actions.push({ type: "back", playerId });
+      // X = jump, Y = slam — matches the console gamepad mapping (buttons 2/3).
       if (buttons.x) actions.push({ type: "jump", playerId });
+      if (buttons.y) actions.push({ type: "slam", playerId });
       if (buttons.start) actions.push({ type: "home", playerId });
-    } else if (this.currentFocus === "lobby") {
-      if (buttons.a) actions.push({ type: "jump", playerId });
-      if (buttons.x) actions.push({ type: "emote", playerId, emote: "wave" });
-      if (buttons.y) actions.push({ type: "emote", playerId, emote: "hype" });
+      // Note: the dashboard always runs in "menu" focus — there is no separate
+      // "lobby" focus today. (An earlier "lobby" branch emitted `emote` actions
+      // the console never handled; removed to avoid implying support.)
     } else if (this.currentFocus === "fullscreen") {
       actions.push({ type: "gamepad_input", playerId, buttons, analog });
     }

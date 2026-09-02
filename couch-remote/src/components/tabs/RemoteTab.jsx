@@ -211,6 +211,7 @@ const SHOULDERS = [
 export default function RemoteTab() {
   const [vol, setVol] = useState(72);
   const [muted, setMuted] = useState(false);
+  const [confirmShutdown, setConfirmShutdown] = useState(false);
   const currentVol = muted ? 0 : vol;
 
   // Right stick spins your cube in the lobby. Emit continuously while
@@ -278,10 +279,55 @@ export default function RemoteTab() {
         <PadBtn onPress={() => sendAction(Actions.MENU)}>
           <Settings size={17} />
         </PadBtn>
-        <PadBtn onPress={() => sendAction(Actions.POWER)} accent="#f87171">
+        <PadBtn onPress={() => setConfirmShutdown(true)} accent="#f87171">
           <Power size={17} />
         </PadBtn>
       </div>
+
+      {/* Shutdown confirmation */}
+      {confirmShutdown && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-6"
+          style={{ background: "rgba(0,0,0,0.7)", backdropFilter: "blur(6px)" }}
+          onClick={() => setConfirmShutdown(false)}
+        >
+          <div
+            className="w-full max-w-xs rounded-2xl p-5 text-center"
+            style={{
+              background: "#12121c",
+              border: "1px solid rgba(255,255,255,0.1)",
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex justify-center mb-3 text-red-400">
+              <Power size={28} />
+            </div>
+            <h2 className="text-base font-black text-white mb-1">
+              Shut down the PC?
+            </h2>
+            <p className="text-xs text-slate-400 mb-4">
+              This powers off the computer running JDrakoon3.
+            </p>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setConfirmShutdown(false)}
+                className="flex-1 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest text-slate-300 bg-white/5 border border-white/10 active:scale-95"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => {
+                  setConfirmShutdown(false);
+                  sendAction(Actions.SHUTDOWN);
+                }}
+                className="flex-1 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest text-white bg-red-600 active:scale-95"
+              >
+                Shut down
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── Shoulder buttons / triggers ──────────────────────────── */}
       <div className="flex gap-2">

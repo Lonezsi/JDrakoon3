@@ -4,6 +4,7 @@ import { connect } from "../services/socket";
 const DEFAULT_STATE = {
   playing: false,
   queue: [],
+  pendingItems: [],
   volume: 72,
   muted: true,
   progress: 0,
@@ -31,6 +32,7 @@ export function useConsoleState() {
           ...cachedState,
           playing: playback.isPlaying ?? cachedState.playing,
           queue,
+          pendingItems: newState.pendingItems || [],
           volume: playback.volume ?? cachedState.volume,
           muted: playback.muted ?? cachedState.muted,
           progress: playback.position ?? cachedState.progress,

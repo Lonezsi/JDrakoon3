@@ -14,7 +14,7 @@ export interface Player {
 }
 
 export interface DeviceAction {
-  type: "move" | "navigate" | "confirm" | "back" | "jump" | "spin";
+  type: "move" | "navigate" | "confirm" | "back" | "jump" | "slam" | "spin";
   playerId?: string;
   deviceId: string;
   deviceType: "keyboard" | "gamepad" | "phone";

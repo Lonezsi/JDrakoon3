@@ -15,10 +15,14 @@ import {
   Settings,
   LogOut,
   Loader2,
+  X,
+  Link2,
 } from "lucide-react";
 import { useMediaPlayer } from "../../hooks/useMediaPlayer";
 import { notifService } from "../../services/notificationService";
+import { subscribe } from "../../services/socket";
 import { SettingsModal } from "./SettingsModal";
+import { FocusInput } from "./FocusInput";
 import { useState, useEffect, useCallback } from "react";
 import { useFocusable } from "../../navigation/FocusContext";
 
@@ -28,13 +32,50 @@ interface FooterProps {
 
 const DEFAULT_THUMB = "https://c.tenor.com/W2_zxTEyVd8AAAAd/tenor.gif";
 
+// Fall back to the default thumbnail when a queue item's thumbnail 404s (the
+// cached jpg can be missing if the download failed) — no broken-image icon.
+// Guarded so a failing fallback can't loop.
+function onThumbError(e: React.SyntheticEvent<HTMLImageElement>) {
+  const img = e.currentTarget;
+  if (img.src !== DEFAULT_THUMB) img.src = DEFAULT_THUMB;
+  else img.onerror = null;
+}
+
 export function Footer({ players }: FooterProps) {
   const media = useMediaPlayer();
   const [newUrl, setNewUrl] = useState("");
   const [seekDrag, setSeekDrag] = useState<number | null>(null);
   const [isSettingsOpen, setSettingsOpen] = useState(false);
+  const [settingsSearchTerm, setSettingsSearchTerm] = useState("");
+  // "Only add content you're authorized to play" note — hidden once dismissed
+  // (persisted to settings.media.hideQueueDisclaimer) or via its Settings toggle.
+  const [hideDisclaimer, setHideDisclaimer] = useState(false);
 
-  const handleCloseSettings = useCallback(() => setSettingsOpen(false), []);
+  useEffect(() => {
+    const apply = (s: any) =>
+      setHideDisclaimer(!!s?.media?.hideQueueDisclaimer);
+    fetch("/api/settings")
+      .then((r) => r.json())
+      .then(apply)
+      .catch(() => {});
+    return subscribe((msg) => {
+      if (msg.type === "settings_updated" && msg.settings) apply(msg.settings);
+    });
+  }, []);
+
+  const dismissDisclaimer = () => {
+    setHideDisclaimer(true);
+    fetch("/api/settings", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ media: { hideQueueDisclaimer: true } }),
+    }).catch(() => {});
+  };
+
+  const handleCloseSettings = useCallback(() => {
+    setSettingsOpen(false);
+    setSettingsSearchTerm("");
+  }, []);
 
   // Listen for custom event from navigation hook to open settings
   useEffect(() => {
@@ -56,14 +97,6 @@ export function Footer({ players }: FooterProps) {
     const adder = players.length > 0 ? players[0].name : "System";
     media.handleQueueAdd(newUrl.trim(), adder);
     setNewUrl("");
-  };
-
-  const handleUrlKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter") {
-      e.preventDefault();
-      e.stopPropagation();
-      addItem();
-    }
   };
 
   const formatTime = (seconds: number) => {
@@ -110,6 +143,9 @@ export function Footer({ players }: FooterProps) {
   });
   const shutdownFocus = useFocusable<HTMLButtonElement>("sys-shutdown", {
     onSelect: handleShutdown,
+  });
+  const syncFocus = useFocusable<HTMLButtonElement>("sys-sync", {
+    onSelect: () => window.dispatchEvent(new Event("open-sync")),
   });
 
   return (
@@ -187,9 +223,7 @@ export function Footer({ players }: FooterProps) {
       </div>
 
       {/* ── 0 · In the Lobby ── */}
-      <div
-        className="flex flex-col gap-2.5 flex-shrink-0 rounded-3xl p-2"
-      >
+      <div className="flex flex-col gap-2.5 flex-shrink-0 rounded-3xl p-2">
         <h3 className="text-[10px] font-black text-gray-600 uppercase tracking-widest">
           In the Lobby
         </h3>
@@ -199,7 +233,7 @@ export function Footer({ players }: FooterProps) {
               key={p.id}
               style={{ backgroundColor: p.color }}
               className="w-11 h-11 rounded-full border-[3px] border-[#04040a] flex items-center justify-center text-[11px] font-black shadow-lg hover:z-10 hover:scale-110 transition-transform relative"
-              title={p.name}
+              data-tip={p.name}
             >
               {p.name[0]}
             </div>
@@ -214,9 +248,7 @@ export function Footer({ players }: FooterProps) {
 
       {/* ── 1 · Mini player ── */}
       {!media.isFullscreen && currentItem != null && (
-        <div
-          className="bg-white/5 rounded-3xl border border-white/10 p-2 gap-2 min-w-0 w-[400px] h-full flex flex-col"
-        >
+        <div className="bg-white/5 rounded-3xl border border-white/10 p-2 gap-2 min-w-0 w-[400px] h-full flex flex-col">
           <div className="flex items-center gap-4">
             <div className="p-2.5 bg-indigo-500/20 rounded-xl text-indigo-400 flex-shrink-0">
               <MonitorPlay size={18} />
@@ -228,6 +260,7 @@ export function Footer({ players }: FooterProps) {
               <div className="flex items-center gap-2">
                 <img
                   src={currentItem.thumbnail || DEFAULT_THUMB}
+                  onError={onThumbError}
                   className="w-8 h-8 rounded-lg object-cover flex-shrink-0"
                   alt=""
                 />
@@ -244,12 +277,14 @@ export function Footer({ players }: FooterProps) {
             <div className="flex items-center gap-1.5">
               <button
                 onClick={media.handlePrev}
+                data-tip="Previous"
                 className="p-2 rounded-lg text-slate-400 hover:text-white hover:bg-white/10 disabled:opacity-20"
               >
                 <SkipBack size={14} />
               </button>
               <button
                 onClick={media.handlePlayPause}
+                data-tip={isPlaying ? "Pause" : "Play"}
                 className="p-2 bg-indigo-600 rounded-full text-white shadow-lg shadow-indigo-500/30 hover:scale-105 active:scale-95"
               >
                 {isPlaying ? (
@@ -260,6 +295,7 @@ export function Footer({ players }: FooterProps) {
               </button>
               <button
                 onClick={media.handleNext}
+                data-tip="Next"
                 className="p-2 rounded-lg text-slate-400 hover:text-white hover:bg-white/10 disabled:opacity-20"
               >
                 <SkipForward size={14} />
@@ -302,6 +338,7 @@ export function Footer({ players }: FooterProps) {
           <div className="flex items-center gap-3">
             <button
               onClick={media.toggleMute}
+              data-tip={muted ? "Unmute" : "Mute"}
               className="text-slate-500 hover:text-white"
             >
               {muted ? <VolumeX size={14} /> : <Volume2 size={14} />}
@@ -320,6 +357,7 @@ export function Footer({ players }: FooterProps) {
             </span>
             <button
               onClick={media.toggleFullscreen}
+              data-tip={media.isFullscreen ? "Exit fullscreen" : "Fullscreen video"}
               className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-white/10"
             >
               {media.isFullscreen ? (
@@ -341,9 +379,7 @@ export function Footer({ players }: FooterProps) {
       )}
 
       {/* ── 2 · Queue ── */}
-      <div
-        className="flex flex-col flex-1 min-w-0 items-start rounded-3xl p-2"
-      >
+      <div className="flex flex-col flex-1 min-w-0 items-start rounded-3xl p-2">
         <h3 className="shrink-0 text-[10px] font-black text-gray-600 uppercase tracking-widest mb-1">
           Queue
         </h3>
@@ -365,6 +401,7 @@ export function Footer({ players }: FooterProps) {
             >
               <img
                 src={item.thumbnail || DEFAULT_THUMB}
+                onError={onThumbError}
                 className="w-12 h-12 rounded object-cover flex-shrink-0"
                 alt=""
               />
@@ -378,6 +415,7 @@ export function Footer({ players }: FooterProps) {
                 <button
                   onClick={() => media.handleQueueMove(idx, "up")}
                   disabled={idx === 0}
+                  data-tip="Move up"
                   className="p-0.5 text-slate-600 hover:text-white disabled:opacity-20"
                 >
                   <ChevronUp size={12} />
@@ -385,6 +423,7 @@ export function Footer({ players }: FooterProps) {
                 <button
                   onClick={() => media.handleQueueMove(idx, "down")}
                   disabled={idx === media.queue.length - 1}
+                  data-tip="Move down"
                   className="p-0.5 text-slate-600 hover:text-white disabled:opacity-20"
                 >
                   <ChevronDown size={12} />
@@ -392,6 +431,7 @@ export function Footer({ players }: FooterProps) {
               </div>
               <button
                 onClick={() => media.handleQueueRemove(idx)}
+                data-tip="Remove from queue"
                 className="p-0.5 text-slate-700 hover:text-red-400"
               >
                 <Trash2 size={12} />
@@ -421,26 +461,50 @@ export function Footer({ players }: FooterProps) {
         </div>
 
         <div className="flex gap-1 mt-2">
-          <input
-            type="text"
+          <FocusInput
+            id="queue-url"
+            layer="root"
+            wrapperClassName="flex-1"
             value={newUrl}
-            onChange={(e) => setNewUrl(e.target.value)}
-            onKeyDown={handleUrlKeyDown}
+            onChange={setNewUrl}
+            onEnter={addItem}
             placeholder="Add URL…"
-            className="flex-1 bg-white/5 border border-white/10 rounded-lg px-2 py-1 text-[10px] text-white placeholder:text-gray-500 outline-none"
+            className="w-full bg-white/5 border border-white/10 rounded-lg px-2 py-1 text-[10px] text-white placeholder:text-gray-500 outline-none"
             style={{ caretColor: "#6366f1" }}
           />
           <button
             onClick={addItem}
+            data-tip="Add to queue"
             className="p-1 bg-indigo-600 rounded-lg text-white active:scale-90"
           >
             <Plus size={12} />
           </button>
         </div>
-        <p className="text-[8px] text-gray-700 mt-1 leading-tight">
-          Only add content you're authorized to play. Streaming-site extraction
-          is off by default — enable it in Settings.
-        </p>
+        {/* link to setting (dismissable) */}
+        {!hideDisclaimer && (
+          <div className="flex items-start gap-1 mt-1">
+            <p className="flex-1 text-[11px] text-gray-600 leading-tight">
+              Only add content you're authorized to play. Streaming-site
+              extraction is off by default -{" "}
+              <button
+                onClick={() => {
+                  setSettingsSearchTerm("extraction");
+                  setSettingsOpen(true);
+                }}
+                className="text-indigo-400 hover:underline bg-transparent border-none cursor-pointer"
+              >
+                enable it in Settings.
+              </button>
+            </p>
+            <button
+              onClick={dismissDisclaimer}
+              data-tip="Hide this message"
+              className="flex-shrink-0 text-gray-700 hover:text-gray-400 p-0.5 -mt-0.5"
+            >
+              <X size={12} />
+            </button>
+          </div>
+        )}
       </div>
 
       {/* ── 3 · System buttons ── */}
@@ -448,6 +512,7 @@ export function Footer({ players }: FooterProps) {
         <button
           ref={settingsFocus.ref}
           onClick={() => setSettingsOpen(true)}
+          data-tip="Settings"
           className={`p-3.5 rounded-2xl border transition-all hover:scale-105 cursor-pointer
             ${
               settingsFocus.focused
@@ -459,8 +524,23 @@ export function Footer({ players }: FooterProps) {
           <Settings size={18} />
         </button>
         <button
+          ref={syncFocus.ref}
+          onClick={() => window.dispatchEvent(new Event("open-sync"))}
+          data-tip="Sync with another console"
+          className={`p-3.5 rounded-2xl border transition-all hover:scale-105 cursor-pointer
+            ${
+              syncFocus.focused
+                ? "ring-2 ring-indigo-400 scale-110 bg-white/10 border-indigo-400/60 text-white"
+                : "bg-white/5 border-white/10 text-gray-500 hover:text-white hover:bg-white/10"
+            }
+          `}
+        >
+          <Link2 size={18} />
+        </button>
+        <button
           ref={shutdownFocus.ref}
           onClick={handleShutdown}
+          data-tip="Shut down the PC"
           className={`p-3.5 rounded-2xl border transition-all hover:scale-105 cursor-pointer
             ${
               shutdownFocus.focused
@@ -473,7 +553,12 @@ export function Footer({ players }: FooterProps) {
         </button>
       </div>
 
-      {isSettingsOpen && <SettingsModal onClose={handleCloseSettings} />}
+      {isSettingsOpen && (
+        <SettingsModal
+          onClose={handleCloseSettings}
+          initialSearch={settingsSearchTerm}
+        />
+      )}
     </div>
   );
 }

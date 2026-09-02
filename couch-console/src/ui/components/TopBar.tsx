@@ -1,18 +1,30 @@
-import { User } from "lucide-react";
+import { User, WifiOff } from "lucide-react";
 import type { Player } from "../../shared/types";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useFocusable } from "../../navigation/FocusContext";
 import { AccountsPanel } from "./AccountsPanel";
+import { subscribeStatus } from "../../services/systemStatus";
+import { notifyModal } from "../../services/confirmService";
 
 interface TopBarProps {
   clock: Date;
   players: Player[];
 }
 
-const GITHUB_REPO = "Lonezsi/JDrakoon3";
-
 export function TopBar({ clock, players }: TopBarProps) {
   const [openUsersPanel, setOpenUsersPanel] = useState(false);
+  // When a lobby cube is clicked, App dispatches "open-accounts" with that
+  // player's id → open the panel and focus that device's row.
+  const [focusDeviceId, setFocusDeviceId] = useState<string | null>(null);
+  useEffect(() => {
+    const onOpen = (e: Event) => {
+      const id = (e as CustomEvent).detail?.playerId ?? null;
+      setFocusDeviceId(id);
+      setOpenUsersPanel(true);
+    };
+    window.addEventListener("open-accounts", onOpen);
+    return () => window.removeEventListener("open-accounts", onOpen);
+  }, []);
   const profileFocus = useFocusable<HTMLDivElement>("topbar-profile", {
     onSelect: setOpenUsersPanel.bind(null, (open) => !open),
   });
@@ -34,80 +46,71 @@ export function TopBar({ clock, players }: TopBarProps) {
 
   const [wifiName, setWifiName] = useState("Loading...");
   const [userName, setUserName] = useState("Loading...");
-  const [updateStatus, setUpdateStatus] = useState<"none" | "available">(
-    "none",
-  );
+  // Live connectivity + update state from the backend (polled every 1s).
+  const [online, setOnline] = useState(true);
+  const [updateAvailable, setUpdateAvailable] = useState(false);
   const [latestVersion, setLatestVersion] = useState("");
+  const [applying, setApplying] = useState(false);
   const [showModal, setShowModal] = useState(false);
   const [dontShowAgain, setDontShowAgain] = useState(false);
 
-  // ── Check for updates ─────────────────────────────────────────
-  const checkForUpdate = async (): Promise<boolean> => {
-    try {
-      const res = await fetch(
-        `https://api.github.com/repos/${GITHUB_REPO}/releases/latest`,
-      );
-      const data = await res.json();
-      const remote = data.tag_name?.replace(/^v/, "");
-      if (appVersion === "0.0.0") return false;
-      if (remote && remote !== appVersion) {
-        setLatestVersion(remote);
-        return true;
-      }
-      return false;
-    } catch {
-      return false;
-    }
-  };
-
-  // ── Trigger the update ────────────────────────────────────────
+  // ── Apply the update (download Setup.exe + run silently, backend-side) ──
   const triggerUpdate = () => {
-    let secret = (window as any).__UPDATE_SECRET__ || "";
-    if (!secret) {
-      secret = prompt("Enter update secret key:") || "";
-    }
-    if (!secret) return;
-
-    fetch("/api/update", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ key: secret }),
-    })
+    setApplying(true);
+    fetch("/api/update/apply", { method: "POST" })
       .then((res) => res.json())
       .then((data) => {
         if (data.ok) {
-          window.location.reload();
+          // The installer will replace files and relaunch; the backend goes
+          // away mid-update. The status poller already shows "offline" then;
+          // the relaunched app loads fresh, so no manual reload needed.
+          return;
+        }
+        setApplying(false);
+        if (data.error === "manual_update_required") {
+          notifyModal(
+            "Update available",
+            `A new version (v${latestVersion}) is available. On macOS/Linux, update by re-running the latest build.`,
+          );
         } else {
-          alert("Update failed: " + (data.error || "unknown error"));
+          notifyModal("Update failed", data.error || "unknown error");
         }
       })
-      .catch(() => alert("Update request failed."));
+      .catch(() => {
+        setApplying(false);
+        notifyModal("Update failed", "Couldn't reach the update service.");
+      });
   };
 
-  // ── Fetch settings and decide what to do ──────────────────────
+  // ── Live status: offline pill, update badge, and auto-apply policy ──────
+  const autoHandled = useRef(false);
   useEffect(() => {
-    fetch("/api/settings")
-      .then((res) => res.json())
-      .then(async (settings) => {
-        const { autoupdate, remindMeAboutUpdate, updateSilently } =
-          settings.autoupdate;
+    return subscribeStatus((s) => {
+      setOnline(s.online);
+      setUpdateAvailable(s.updateAvailable);
+      setApplying(s.applying);
+      if (s.latestVersion) setLatestVersion(s.latestVersion);
 
-        const updateAvailable = await checkForUpdate();
-        if (!updateAvailable) return;
-
-        if (autoupdate) {
-          setUpdateStatus("available");
-          triggerUpdate();
-        } else if (updateSilently) {
-          triggerUpdate();
-        } else if (
-          remindMeAboutUpdate &&
-          !localStorage.getItem("hide_update_modal")
-        ) {
-          setShowModal(true);
-        }
-      })
-      .catch(() => {});
+      // First time we learn an update is available, consult the user's policy.
+      if (s.updateAvailable && !autoHandled.current && !s.applying) {
+        autoHandled.current = true;
+        fetch("/api/settings")
+          .then((res) => res.json())
+          .then((settings) => {
+            const { autoupdate, remindMeAboutUpdate, updateSilently } =
+              settings.autoupdate || {};
+            if (autoupdate || updateSilently) {
+              triggerUpdate();
+            } else if (
+              remindMeAboutUpdate &&
+              !localStorage.getItem("hide_update_modal")
+            ) {
+              setShowModal(true);
+            }
+          })
+          .catch(() => {});
+      }
+    });
   }, []);
 
   function formatSSID(ssid: string): string {
@@ -146,18 +149,33 @@ export function TopBar({ clock, players }: TopBarProps) {
             <span className="px-2.5 py-1 bg-red-500 rounded text-[10px] font-black uppercase tracking-wider">
               Alpha!
             </span>
-            {updateStatus === "available" && (
-              <span className="px-2.5 py-1 bg-yellow-600 rounded text-[10px] font-black uppercase tracking-wider animate-pulse">
-                Update Available ({latestVersion})
+            {applying ? (
+              <span className="px-2.5 py-1 bg-indigo-600 rounded text-[10px] font-black uppercase tracking-wider animate-pulse">
+                Updating…
+              </span>
+            ) : (
+              updateAvailable && (
+                <span className="px-2.5 py-1 bg-yellow-600 rounded text-[10px] font-black uppercase tracking-wider animate-pulse">
+                  Update Available{latestVersion ? ` (${latestVersion})` : ""}
+                </span>
+              )
+            )}
+            {!online && (
+              <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-white/10 border border-amber-400/30 rounded text-[10px] font-black uppercase tracking-wider text-amber-300">
+                <WifiOff size={11} /> Offline
               </span>
             )}
           </h1>
           <div className="flex items-center gap-2 mt-1">
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse flex-shrink-0" />
-            <p className="text-[10px] text-indigo-400 font-bold uppercase tracking-widest">
-              {players.length} Active ·&nbsp;
-              <span className="text-gray-500">WIFI: {wifiName}</span>
-            </p>
+            {online ?? (
+              <>
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse flex-shrink-0" />
+                <p className="text-[10px] text-indigo-400 font-bold uppercase tracking-widest">
+                  {players.length} Active ·&nbsp;
+                  <span className="text-gray-500">WIFI: {wifiName}</span>
+                </p>
+              </>
+            )}
           </div>
           <p className="text-[10px] text-gray-600 font-bold uppercase tracking-widest mt-1">
             {envName} - {new Date().toLocaleDateString()}
@@ -191,8 +209,12 @@ export function TopBar({ clock, players }: TopBarProps) {
       {/* Full-height accounts panel */}
       <AccountsPanel
         open={openUsersPanel}
-        onClose={() => setOpenUsersPanel(false)}
+        onClose={() => {
+          setOpenUsersPanel(false);
+          setFocusDeviceId(null);
+        }}
         players={players}
+        focusDeviceId={focusDeviceId}
       />
 
       {/* Update reminder modal */}

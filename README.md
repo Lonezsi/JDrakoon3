@@ -178,4 +178,5 @@ the focus graph.
 
 The optional video queue uses `yt-dlp` to fetch media. You are responsible for
 only adding content you're authorized to play, and for complying with each
-source platform's Terms of Service and applicable copyright law.
+source platform's Terms of Service and applicable copyright law. See
+[LEGAL.md](LEGAL.md) for the full rundown (it's off by default).

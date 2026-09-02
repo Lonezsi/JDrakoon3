@@ -73,12 +73,21 @@ export function connect(url, opts = {}) {
     "input:ownership_updated",
     "queue_add_failed",
     "video_error",
+    "settings_updated",
   ];
   forwardEvents.forEach((e) =>
     socket.on(e, (payload) => notify({ type: e, ...payload })),
   );
 
   socket.on("disconnect", () => notify({ type: "disconnect" }));
+
+  // The host removed us from the lobby ("disconnect" button on the dashboard).
+  // Stop auto-reconnecting so we actually stay gone (otherwise socket.io would
+  // silently rejoin within ~1s); surface it so the UI can show a kicked state.
+  socket.on("kicked", () => {
+    socket.io.reconnection(false);
+    notify({ type: "kicked" });
+  });
 
   // set transport for inputActions
   let lastMoveSent = 0;
@@ -152,15 +161,22 @@ export function connect(url, opts = {}) {
         socket.emit("input:event", { buttons: { b: true } });
         break;
 
-      // ── HOME (backend maps start → home in menu focus) ──
+      // ── System buttons → backend "system" handler ──
       case "HOME":
-        socket.emit("input:event", { buttons: { start: true } });
+        // Close any running app and return the dashboard to its home screen.
+        socket.emit("system", { action: "home" });
         break;
       case "MENU":
-        socket.emit("action", { type: "menu" });
+        // Open the dashboard's Settings.
+        socket.emit("system", { action: "settings" });
+        break;
+      case "SHUTDOWN":
+        // The phone confirms first (modal), then sends this.
+        socket.emit("system", { action: "shutdown" });
         break;
       case "POWER":
-        socket.emit("action", { type: "power" });
+        // Legacy alias — RemoteTab now opens a confirm then sends SHUTDOWN.
+        socket.emit("system", { action: "shutdown" });
         break;
       case "START":
         socket.emit("input:event", { buttons: { start: true } });
@@ -219,11 +235,37 @@ export function connect(url, opts = {}) {
       case "MEDIA_PREV":
         socket.emit("media_prev");
         break;
+      case "MEDIA_SEEK":
+        // backend expects seconds under { progress }
+        socket.emit("media_seek", { progress: payload?.progress ?? 0 });
+        break;
+      case "MEDIA_VOLUME":
+        socket.emit("media_volume", { volume: payload?.volume ?? 0 });
+        break;
+      case "MEDIA_MUTE":
+        socket.emit("media_mute");
+        break;
       case "ADD_TO_QUEUE":
         socket.emit("queue_add", payload.url);
         break;
       case "REMOVE_FROM_QUEUE":
-        socket.emit("queue_remove", payload.index);
+        socket.emit("queue_remove", { index: payload?.index });
+        break;
+      case "MOVE_QUEUE_ITEM":
+        // backend expects direction as "up" | "down"
+        socket.emit("queue_move", {
+          index: payload?.index,
+          direction: payload?.direction,
+        });
+        break;
+      case "CLEAR_QUEUE":
+        socket.emit("clear_queue");
+        break;
+      case "SHUFFLE_QUEUE":
+        socket.emit("shuffle_queue");
+        break;
+      case "LOOP_TOGGLE":
+        socket.emit("loop_toggle");
         break;
 
       default:

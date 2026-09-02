@@ -149,6 +149,51 @@ if ($edge.HasExited) {
     exit 1
 }
 
+# ── Brand the kiosk window icon ────────────────────────
+# Edge --kiosk shows Edge's icon in Alt-Tab/taskbar. Edge spawns child
+# processes, so we find the window by its document title ("JDrakoon3") and push
+# our icon onto it via WM_SETICON. (The packaged build uses the WebView2 host,
+# which already carries the icon; this is just for the dev/start.ps1 path.)
+try {
+    Add-Type -Namespace JD -Name Win -MemberDefinition @'
+[System.Runtime.InteropServices.DllImport("user32.dll", CharSet=System.Runtime.InteropServices.CharSet.Auto)]
+public static extern System.IntPtr SendMessage(System.IntPtr hWnd, uint Msg, System.IntPtr wParam, System.IntPtr lParam);
+[System.Runtime.InteropServices.DllImport("user32.dll", CharSet=System.Runtime.InteropServices.CharSet.Auto)]
+public static extern System.IntPtr LoadImage(System.IntPtr h, string name, uint type, int cx, int cy, uint load);
+'@
+    $icoPath = Join-Path $root "drakoon.ico"
+    if (Test-Path $icoPath) {
+        $WM_SETICON = 0x80; $IMAGE_ICON = 1; $LR = 0x10  # LR_LOADFROMFILE
+        $hBig = [JD.Win]::LoadImage([IntPtr]::Zero, $icoPath, $IMAGE_ICON, 32, 32, $LR)
+        $hSmall = [JD.Win]::LoadImage([IntPtr]::Zero, $icoPath, $IMAGE_ICON, 16, 16, $LR)
+        # Edge usually appends " - Microsoft​ Edge"/profile to the title, so match
+        # loosely; fall back to any process whose window title mentions us.
+        $deadline = (Get-Date).AddSeconds(15)
+        $win = $null
+        do {
+            Start-Sleep -Milliseconds 500
+            $win = Get-Process -Name msedge -ErrorAction SilentlyContinue |
+                Where-Object { $_.MainWindowTitle -like '*JDrakoon3*' -and $_.MainWindowHandle -ne 0 } |
+                Select-Object -First 1
+            if (-not $win) {
+                $win = Get-Process -ErrorAction SilentlyContinue |
+                    Where-Object { $_.MainWindowTitle -like '*JDrakoon3*' -and $_.MainWindowHandle -ne 0 } |
+                    Select-Object -First 1
+            }
+        } until ($win -or (Get-Date) -gt $deadline)
+        if ($win) {
+            # ICON_SMALL/BIG drive the title-bar + Alt-Tab; ICON_SMALL2 (2) the
+            # taskbar where supported.
+            [JD.Win]::SendMessage($win.MainWindowHandle, $WM_SETICON, [IntPtr]1, $hBig) | Out-Null   # ICON_BIG
+            [JD.Win]::SendMessage($win.MainWindowHandle, $WM_SETICON, [IntPtr]0, $hSmall) | Out-Null # ICON_SMALL
+            [JD.Win]::SendMessage($win.MainWindowHandle, $WM_SETICON, [IntPtr]2, $hSmall) | Out-Null # ICON_SMALL2
+            Write-Host "Applied custom window icon to '$($win.MainWindowTitle)'." -ForegroundColor Green
+        } else {
+            Write-Host "Kiosk window not found for icon (skipped)." -ForegroundColor DarkGray
+        }
+    }
+} catch { Write-Host "Icon set skipped: $_" -ForegroundColor DarkGray }
+
 # ── Wait for browser close, then stop everything ───
 $edge.WaitForExit()
 Remove-Item "$root\backend\.edge_pid" -ErrorAction SilentlyContinue

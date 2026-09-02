@@ -13,6 +13,11 @@ import { settingsService } from "./services/SettingsService";
 import { gameScanner } from "./services/GameScanner";
 import { appLauncher } from "./services/AppLauncher";
 import { accountsService } from "./services/AccountsService";
+import { systemStatus } from "./services/SystemStatusService";
+import { autostartService } from "./services/AutostartService";
+import { peerSync } from "./services/PeerSyncService";
+import { appIconMeta, cleanAppName } from "./services/AppIconService";
+import { isLikelyGame } from "./utils/gameHeuristic";
 import { PORT, CACHE_DIR, CONFIG_DIR } from "./config/constants";
 import {
   readRunningFile,
@@ -38,6 +43,16 @@ async function bootstrap() {
 
   await settingsService.init();
   await gameScanner.scan();
+
+  // Restore the saved peer-sync code (so both consoles keep their room).
+  peerSync.setCode(settingsService.get().sync?.code ?? "");
+
+  // Reconcile the "start at login" registry entry with the saved setting on
+  // boot, then keep it in sync whenever the setting changes (Settings toggle).
+  autostartService.apply(settingsService.get().system?.autostart ?? false);
+  settingsService.subscribe((s) =>
+    autostartService.apply(s.system?.autostart ?? false),
+  );
 
   const app = express();
   const server = http.createServer(app);
@@ -73,6 +88,17 @@ async function bootstrap() {
     } catch {
       res.json({ version: "0.0.0" });
     }
+  });
+
+  // Live connectivity + update state (polled ~1s by the UI: offline banner,
+  // QR visibility, update badge).
+  app.get("/api/status", (req, res) => res.json(systemStatus.get()));
+
+  // Apply the latest release at runtime: download Setup.exe + run silently.
+  // No secret/git needed (unlike the legacy /api/update below) — Windows only.
+  app.post("/api/update/apply", async (req, res) => {
+    const result = await systemStatus.applyUpdate();
+    res.status(result.ok ? 200 : 400).json(result);
   });
 
   // Serve cached thumbnails and video files under /cache
@@ -213,7 +239,17 @@ async function bootstrap() {
     }
   });
 
-  // Dynamic QR code for phone pairing
+  // Dynamic QR code for phone pairing (rendered SVGs cached by IP+hostname).
+  let qrCache: {
+    key: string;
+    payload: {
+      svg: string;
+      url: string;
+      host: string;
+      hostUrl: string;
+      hostSvg: string | null;
+    };
+  } | null = null;
   app.get("/qr-code", async (req, res) => {
     try {
       const PORT = 3001; // (or use your imported PORT constant)
@@ -275,11 +311,31 @@ async function bootstrap() {
       );
 
       const phoneUrl = `http://${bestIP}:${PORT}/phone`;
-      const svg = await qrcode.toString(phoneUrl, {
-        type: "svg",
-        errorCorrectionLevel: "M",
-      });
-      res.json({ svg, url: phoneUrl });
+      const host = os.hostname();
+      const hostUrl = `http://${host}:${PORT}/phone`;
+
+      // The QR SVGs are the expensive part. They only change when the IP or
+      // hostname changes, so cache the rendered payload and reuse it — repeat
+      // opens (and reconnects) return instantly instead of re-rendering.
+      const key = `${phoneUrl}|${hostUrl}`;
+      if (!qrCache || qrCache.key !== key) {
+        const svg = await qrcode.toString(phoneUrl, {
+          type: "svg",
+          errorCorrectionLevel: "M",
+        });
+        let hostSvg: string | null = null;
+        try {
+          hostSvg = await qrcode.toString(hostUrl, {
+            type: "svg",
+            errorCorrectionLevel: "M",
+          });
+        } catch {}
+        qrCache = {
+          key,
+          payload: { svg, url: phoneUrl, host, hostUrl, hostSvg },
+        };
+      }
+      res.json(qrCache.payload);
     } catch (err) {
       res.status(500).json({ ok: false });
     }
@@ -379,15 +435,37 @@ async function bootstrap() {
     }
   }
 
+  // The SSID lookup shells out (netsh / airport / iwgetid) and is slow (~1s on
+  // Windows). It rarely changes, so cache it for 30s — repeated TopBar loads
+  // return instantly instead of blocking on the shell each time.
+  let ssidCache: { value: string; at: number } | null = null;
   app.get("/api/network-info", (req, res) => {
     res.setHeader("content-type", "application/json; charset=utf-8");
-    const ssid = getWifiSSID();
-    res.json({ ssid });
+    if (!ssidCache || Date.now() - ssidCache.at > 30000) {
+      ssidCache = { value: getWifiSSID(), at: Date.now() };
+    }
+    res.json({ ssid: ssidCache.value });
+  });
+
+  // Who's "signed in" — the active account's gamertag, else the OS user. Shown
+  // in the TopBar (previously this endpoint didn't exist → "Not Signed In").
+  app.get("/api/users/me", (req, res) => {
+    const state = accountsService.get();
+    const active = state.accounts.find((a) => a.id === state.activeId);
+    let name = active?.gamertag;
+    if (!name) {
+      try {
+        name = os.userInfo().username;
+      } catch {
+        name = undefined;
+      }
+    }
+    res.json({ name: name || "Player" });
   });
 
   // Serve a local image file as an app icon (the browser can't load
   // file:// paths directly). Validates it's an existing image before streaming.
-  app.get("/api/app-icon", (req, res) => {
+  app.get("/api/app-icon", async (req, res) => {
     const p = String(req.query.path || "");
     const ext = path.extname(p).toLowerCase();
     const types: Record<string, string> = {
@@ -400,14 +478,40 @@ async function bootstrap() {
       ".ico": "image/x-icon",
       ".bmp": "image/bmp",
     };
-    if (!types[ext] || !fs.existsSync(p) || !fs.statSync(p).isFile()) {
-      return res.status(404).end();
+    // Direct image file → stream as-is.
+    if (types[ext] && fs.existsSync(p) && fs.statSync(p).isFile()) {
+      res.setHeader("Content-Type", types[ext]);
+      res.setHeader("Cache-Control", "max-age=3600");
+      fs.createReadStream(p)
+        .on("error", () => res.status(500).end())
+        .pipe(res);
+      return;
     }
-    res.setHeader("Content-Type", types[ext]);
-    res.setHeader("Cache-Control", "max-age=3600");
-    fs.createReadStream(p)
-      .on("error", () => res.status(500).end())
-      .pipe(res);
+    // .exe / .lnk → extract (and cache) the real Windows icon as a PNG.
+    if ((ext === ".exe" || ext === ".lnk") && fs.existsSync(p)) {
+      const meta = await appIconMeta(p);
+      if (meta.pngPath && fs.existsSync(meta.pngPath)) {
+        res.setHeader("Content-Type", "image/png");
+        res.setHeader("Cache-Control", "max-age=86400");
+        fs.createReadStream(meta.pngPath)
+          .on("error", () => res.status(500).end())
+          .pipe(res);
+        return;
+      }
+    }
+    res.status(404).end();
+  });
+
+  // Icon-derived metadata for a launcher path: average colour + clean name.
+  // Used when adding an app so it gets its real accent colour + tidy name.
+  app.get("/api/app-meta", async (req, res) => {
+    const p = String(req.query.path || "");
+    const meta = await appIconMeta(p);
+    res.json({
+      color: meta.color,
+      hasIcon: !!meta.pngPath,
+      name: cleanAppName(p),
+    });
   });
 
   // Resolve a bare exe name (from a browser file drop, where the full path
@@ -455,18 +559,20 @@ async function bootstrap() {
   // List installed apps for the "Add System" picker: Start Menu shortcuts
   // (resolved to their .exe target via WScript.Shell) + scanned Steam games.
   // Cached for the session; pass ?refresh=1 to rescan.
-  let installedAppsCache: { name: string; launcher: string }[] | null = null;
+  let installedAppsCache:
+    | { name: string; launcher: string; game: boolean }[]
+    | null = null;
   app.get("/api/installed-apps", async (req, res) => {
     if (req.query.refresh) installedAppsCache = null;
     if (installedAppsCache) return res.json({ apps: installedAppsCache });
 
-    const apps: { name: string; launcher: string }[] = [];
+    const apps: { name: string; launcher: string; game: boolean }[] = [];
 
     // Steam games from the existing scanner (steam://rungameid/… launchers).
     try {
       for (const e of gameScanner.getLibrary()) {
         if (e.category === "Steam" && e.name) {
-          apps.push({ name: e.name, launcher: e.path });
+          apps.push({ name: e.name, launcher: e.path, game: true });
         }
       }
     } catch {}
@@ -500,10 +606,66 @@ async function bootstrap() {
             const base = path.basename(win, ".lnk");
             if (/uninstall|setup|update|crash|readme|website|help/i.test(base))
               continue;
-            apps.push({ name: base, launcher: win });
+            apps.push({ name: base, launcher: win, game: isLikelyGame(base, win) });
           }
         } catch (e) {
           logger.warn("installed-apps glob failed:", e);
+        }
+      }
+    } else if (process.platform === "darwin") {
+      // macOS: .app bundles in the system + user Applications folders. The
+      // PosixLauncher opens these with `open -W`, so the launcher is the path.
+      const appDirs = [
+        "/Applications",
+        path.join(process.env.HOME || "", "Applications"),
+      ].filter((d) => d && fs.existsSync(d));
+      for (const dir of appDirs) {
+        try {
+          const bundles = await fg("**/*.app", {
+            cwd: dir,
+            absolute: true,
+            deep: 2,
+            onlyDirectories: true,
+            suppressErrors: true,
+          });
+          for (const b of bundles) {
+            const nm = path.basename(b, ".app");
+            apps.push({ name: nm, launcher: b, game: isLikelyGame(nm, b) });
+          }
+        } catch (e) {
+          logger.warn("installed-apps (mac) glob failed:", e);
+        }
+      }
+    } else if (process.platform === "linux") {
+      // Linux: freedesktop .desktop entries. Parse Name= and Exec= (Exec field
+      // codes like %U/%f are stripped); the cleaned command is the launcher.
+      const deskDirs = [
+        "/usr/share/applications",
+        "/usr/local/share/applications",
+        path.join(process.env.HOME || "", ".local/share/applications"),
+        "/var/lib/flatpak/exports/share/applications",
+      ].filter((d) => d && fs.existsSync(d));
+      for (const dir of deskDirs) {
+        try {
+          const files = await fg("**/*.desktop", {
+            cwd: dir,
+            absolute: true,
+            deep: 2,
+            suppressErrors: true,
+          });
+          for (const f of files) {
+            try {
+              const txt = fs.readFileSync(f, "utf-8");
+              if (/^NoDisplay\s*=\s*true/im.test(txt)) continue;
+              const name = /^Name\s*=\s*(.+)$/im.exec(txt)?.[1]?.trim();
+              const exec = /^Exec\s*=\s*(.+)$/im.exec(txt)?.[1]?.trim();
+              if (!name || !exec) continue;
+              const cleaned = exec.replace(/%[A-Za-z]/g, "").trim();
+              apps.push({ name, launcher: cleaned, game: isLikelyGame(name, cleaned) });
+            } catch {}
+          }
+        } catch (e) {
+          logger.warn("installed-apps (linux) glob failed:", e);
         }
       }
     }
@@ -517,7 +679,14 @@ async function bootstrap() {
         seen.add(k);
         return true;
       })
-      .sort((a, b) => a.name.localeCompare(b.name));
+      // Likely games first, then alphabetical within each group.
+      .sort((a, b) =>
+        a.game === b.game
+          ? a.name.localeCompare(b.name)
+          : a.game
+            ? -1
+            : 1,
+      );
 
     installedAppsCache = deduped;
     res.json({ apps: deduped });
@@ -763,6 +932,8 @@ async function bootstrap() {
     logger.info(`Backend listening on http://localhost:${PORT}`);
     logger.info(`TV UI: http://localhost:${PORT}`);
     logger.info(`Phone UI: http://localhost:${PORT}/phone`);
+    // Begin connectivity + update polling once we're up.
+    systemStatus.start();
   });
 }
 

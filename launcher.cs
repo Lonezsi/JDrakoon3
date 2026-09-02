@@ -29,7 +29,7 @@ using Microsoft.Web.WebView2.WinForms;
 [assembly: System.Reflection.AssemblyTitle("JDrakoon3")]
 [assembly: System.Reflection.AssemblyProduct("JDrakoon3")]
 [assembly: System.Reflection.AssemblyCompany("Lonezsi")]
-[assembly: System.Reflection.AssemblyFileVersion("3.0.1")]
+[assembly: System.Reflection.AssemblyFileVersion("3.0.5")]
 
 static class Launcher
 {
@@ -39,7 +39,10 @@ static class Launcher
     // ERR_CONNECTION_REFUSED. 127.0.0.1 is unambiguous.
     const string BASEURL = "http://127.0.0.1:3001";
     const string REPO = "Lonezsi/JDrakoon3";
-    const string LATEST_API = "https://api.github.com/repos/Lonezsi/JDrakoon3/releases/latest";
+    // The releases LIST, not /releases/latest — the latter 404s when every
+    // release is a pre-release (which the Alpha's are). The array is returned
+    // newest-first, so the first tag_name + first Setup.exe asset is the newest.
+    const string LATEST_API = "https://api.github.com/repos/Lonezsi/JDrakoon3/releases";
 
     static string ROOT, BACKEND_DIR, DATA_DIR, LOG, BACKEND_LOG, EDGE_PROFILE;
     static Process backend, kiosk;
@@ -96,6 +99,7 @@ static class Launcher
             }
 
             WipeKioskProfile();   // guarantee a fresh kiosk, never a cached error page
+            EnsureFirewallRule(); // first run only: one UAC instead of the LAN-listen popup
             KillPort();
             StartBackend();
 
@@ -286,6 +290,9 @@ static class Launcher
             RedirectStandardError = true,
         };
         psi.EnvironmentVariables["NODE_ENV"] = "production";
+        // Hand the backend our own exe path so it can point the "start at login"
+        // registry entry (settings.system.autostart) at the real launcher.
+        try { psi.EnvironmentVariables["JD_EXE_PATH"] = Process.GetCurrentProcess().MainModule.FileName; } catch { }
 
         backend = new Process { StartInfo = psi, EnableRaisingEvents = true };
         DataReceivedEventHandler sink = (s, e) =>
@@ -483,6 +490,74 @@ static class Launcher
             p.WaitForExit();
         }
         catch { }
+    }
+
+    // ── Firewall (#14) ────────────────────────────────────────────────────────
+    // The phone reaches the backend over the LAN, so Node listens on 0.0.0.0:3001
+    // — which makes Windows pop its "Allow access?" firewall dialog the first
+    // time. We pre-authorize once: on first run, if our inbound rule is missing,
+    // add it via an elevated netsh (a single UAC prompt, ever). The installer
+    // stays per-user / no-admin. If the user declines the UAC, we drop a marker
+    // so we don't nag — Windows' own prompt is then the fallback.
+    static void EnsureFirewallRule()
+    {
+        string marker = Path.Combine(DATA_DIR, "firewall.applied");
+        try
+        {
+            if (File.Exists(marker)) return;
+            if (FirewallRuleExists()) { Touch(marker, "exists"); return; }
+
+            string netsh = Path.Combine(Environment.SystemDirectory, "netsh.exe");
+            var psi = new ProcessStartInfo
+            {
+                FileName = netsh,
+                Arguments = "advfirewall firewall add rule name=\"JDrakoon3\" " +
+                            "dir=in action=allow protocol=TCP localport=" + PORT,
+                UseShellExecute = true, // required for the runas verb
+                Verb = "runas",         // triggers the single UAC prompt
+                WindowStyle = ProcessWindowStyle.Hidden,
+            };
+            try
+            {
+                var p = Process.Start(psi);
+                p.WaitForExit(15000);
+                Log("Firewall rule add exit=" + (p.HasExited ? p.ExitCode.ToString() : "timeout"));
+            }
+            catch (Exception e)
+            {
+                // Win32 1223 = user cancelled the UAC. Don't nag on later runs.
+                Log("Firewall rule not added (" + e.Message + ") - Windows may prompt instead.");
+            }
+            Touch(marker, "attempted");
+        }
+        catch (Exception e) { Log("Firewall step skipped: " + e.Message); }
+    }
+
+    static bool FirewallRuleExists()
+    {
+        try
+        {
+            string netsh = Path.Combine(Environment.SystemDirectory, "netsh.exe");
+            var psi = new ProcessStartInfo
+            {
+                FileName = netsh,
+                Arguments = "advfirewall firewall show rule name=\"JDrakoon3\"",
+                UseShellExecute = false,
+                CreateNoWindow = true,
+                RedirectStandardOutput = true,
+            };
+            var p = Process.Start(psi);
+            string outp = p.StandardOutput.ReadToEnd();
+            p.WaitForExit();
+            return p.ExitCode == 0 &&
+                   outp.IndexOf("JDrakoon3", StringComparison.OrdinalIgnoreCase) >= 0;
+        }
+        catch { return false; }
+    }
+
+    static void Touch(string path, string content)
+    {
+        try { File.WriteAllText(path, content); } catch { }
     }
 
     static void KillPort()

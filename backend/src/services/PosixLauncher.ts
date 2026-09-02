@@ -57,15 +57,18 @@ export function launchPosixApp(
       return app; // no pid, no exit tracking
     }
 
+    const parts = raw.split(/\s+/);
+    const exe = parts[0];
+    const isBareCommand = !!exe && !/[\\/]/.test(exe); // e.g. "firefox %U" → "firefox"
+
     if (isAppBundle) {
       // `open -W` blocks until the app quits → we can report exit.
       child = spawn("open", ["-W", raw], { stdio: "ignore" });
-    } else if (isExistingPath) {
-      const parts = raw.split(/\s+/);
-      const exe = parts.shift() as string;
-      child = spawn(exe, parts, { stdio: "ignore" });
+    } else if (isExistingPath || isBareCommand) {
+      // An absolute exe, or a command resolved via PATH (cleaned .desktop Exec).
+      child = spawn(exe, parts.slice(1), { stdio: "ignore" });
     } else {
-      // Fall back to the desktop opener (e.g. a .desktop entry name on Linux).
+      // Last resort: hand the whole string to the desktop opener.
       const opener = isMac ? "open" : "xdg-open";
       child = spawn(opener, [raw], { detached: true, stdio: "ignore" });
       child.unref();

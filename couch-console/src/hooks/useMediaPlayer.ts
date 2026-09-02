@@ -37,7 +37,11 @@ const RETRY_DELAYS = [5000, 10000, 20000]; // ms between retries (index = attemp
 
 export function useMediaPlayer() {
   const [queue, setQueue] = useState<QueueItem[]>([]);
+  // Locally-originated optimistic pending (with client retry).
   const [pendingItems, setPendingItems] = useState<PendingItem[]>([]);
+  // Pending items reported by the server (e.g. added from a phone) — display
+  // only, never retried here (the server owns their resolution).
+  const [remotePending, setRemotePending] = useState<PendingItem[]>([]);
   const [playback, setPlayback] = useState<PlaybackState>({
     currentIndex: 0,
     isPlaying: false,
@@ -81,6 +85,23 @@ export function useMediaPlayer() {
             ),
           );
         }
+        // Mirror the server's pending list so items added elsewhere (a phone)
+        // show their loading skeleton on the dashboard too.
+        const sp = (msg.pendingItems || []) as Array<{
+          id: string;
+          url: string;
+          requestedBy: string;
+        }>;
+        setRemotePending(
+          sp.map((s) => ({
+            id: s.id,
+            url: s.url,
+            requestedBy: s.requestedBy,
+            createdAt: Date.now(),
+            retries: 0,
+            sending: false,
+          })),
+        );
         if (msg.playback) {
           setPlayback((prev) => ({ ...prev, ...msg.playback }));
         }
@@ -304,8 +325,16 @@ export function useMediaPlayer() {
     sendAction({ type: "media_prev" });
   }, []);
 
-  // FIX 1: set suppressSyncUntil so the echo-back doesn't cause a seek
+  // Apply the seek to the local <video> immediately — the server echo is
+  // suppressed for 2 s and the 1 s position reporter would otherwise re-send the
+  // OLD currentTime and revert the seek. (Setting lastSyncTime keeps the next
+  // report aligned to the new position.)
   const handleSeek = useCallback((value: number) => {
+    const video = videoRef.current;
+    if (video) {
+      video.currentTime = value;
+      lastSyncTime.current = value;
+    }
     suppressSyncUntil.current = Date.now() + 2000;
     sendAction({ type: "media_seek", payload: { progress: value } });
   }, []);
@@ -367,9 +396,21 @@ export function useMediaPlayer() {
 
   const clearVideoError = useCallback(() => setVideoError(null), []);
 
+  // Display set = local optimistic pending + server-reported pending, deduped by
+  // URL (a local add is also echoed by the server) and excluding anything that
+  // has already landed in the queue.
+  const localUrls = new Set(pendingItems.map((p) => p.url));
+  const queueUrls = new Set(queue.map((q) => q.url));
+  const mergedPending = [
+    ...pendingItems,
+    ...remotePending.filter(
+      (r) => !localUrls.has(r.url) && !queueUrls.has(r.url),
+    ),
+  ];
+
   return {
     queue,
-    pendingItems,
+    pendingItems: mergedPending,
     playback,
     currentItem,
     videoRef,

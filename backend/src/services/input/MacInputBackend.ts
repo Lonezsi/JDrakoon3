@@ -141,4 +141,28 @@ export class MacInputBackend implements InputBackend {
         this.osa(`tell application "System Events" to key code ${code}${usingClause}`);
     }
   }
+
+  comboClick(mods: string[], button: "left" | "right") {
+    if (!this.hasCliclick) return;
+    // cliclick modifier names: cmd, ctrl, alt, shift (ctrl→cmd, see note above).
+    const map: Record<string, string> = {
+      ctrl: "cmd",
+      control: "ctrl",
+      shift: "shift",
+      alt: "alt",
+      option: "alt",
+      win: "cmd",
+      meta: "cmd",
+      cmd: "cmd",
+      command: "cmd",
+    };
+    const ks = mods.map((m) => map[m.toLowerCase()]).filter(Boolean);
+    const click = button === "right" ? "rc:." : "c:.";
+    const args = ks.length
+      ? [`kd:${ks.join(",")}`, click, `ku:${ks.join(",")}`]
+      : [click];
+    execFile("cliclick", args, (err) => {
+      if (err) logger.warn(`[inputControl] cliclick combo failed: ${err.message}`);
+    });
+  }
 }

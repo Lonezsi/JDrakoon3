@@ -84,15 +84,22 @@ export interface InputMapping {
 }
 
 export interface Settings {
-  display: { fullscreen: boolean; crtEffect: boolean; volume: number };
+  display: {
+    fullscreen: boolean;
+    crtEffect: boolean;
+    /** CRT effect strength, 0–100 (only applies while crtEffect is on). */
+    crtIntensity: number;
+    volume: number;
+  };
   media: {
     defaultVolume: number;
-    cacheLimitGB: number;
-    preloadNext: boolean;
     /** Allow yt-dlp extraction from streaming sites (YouTube etc.). Off by
      *  default: only direct media URLs / local files are accepted until the
      *  user opts in, since extraction can violate a platform's ToS. */
     allowExtraction: boolean;
+    /** Hide the "only add content you're authorized to play" note under the
+     *  queue (set by its dismiss button, or toggled in Settings). */
+    hideQueueDisclaimer: boolean;
   };
   input: {
     deadzone: number;
@@ -106,6 +113,16 @@ export interface Settings {
     mappings: Record<string, InputMapping>;
   };
   autoupdate: AutoUpdateSettings;
+  /** OS-integration toggles. */
+  system: {
+    /** Launch JDrakoon3 automatically when Windows starts (HKCU Run entry). */
+    autostart: boolean;
+  };
+  /** Peer-console sync (PeerSyncService). */
+  sync: {
+    /** Shared room code — two consoles with the same code can link. */
+    code: string;
+  };
   apps: Record<string, AppConfig>;
   players: { name: string; color: string }[];
   libraryFolders: string[];

@@ -5,12 +5,11 @@ import logger from "../utils/logger";
 import { Settings } from "../models/types";
 
 export const defaultSettings: Settings = {
-  display: { fullscreen: true, crtEffect: true, volume: 80 },
+  display: { fullscreen: true, crtEffect: true, crtIntensity: 100, volume: 80 },
   media: {
     defaultVolume: 72,
-    cacheLimitGB: 20,
-    preloadNext: true,
     allowExtraction: false,
+    hideQueueDisclaimer: false,
   },
   // devices: per-device overrides keyed by id ("keyboard1", "gamepad-0", …),
   // registered by the console when it detects a device (so the Settings modal
@@ -33,6 +32,7 @@ export const defaultSettings: Settings = {
           confirm: 0,
           back: 1,
           jump: 2,
+          slam: 3,
         },
         keys: {},
         axes: { move: [0, 1], spin: [2, 3] },
@@ -52,6 +52,7 @@ export const defaultSettings: Settings = {
           confirm: "enter",
           back: "escape",
           jump: "x",
+          slam: "c",
         },
         axes: { move: [-1, -1], spin: [-1, -1] },
       },
@@ -69,7 +70,8 @@ export const defaultSettings: Settings = {
           navRight: "",
           confirm: "",
           back: "",
-          jump: "",
+          jump: "n",
+          slam: "m",
         },
         axes: { move: [-1, -1], spin: [-1, -1] },
       },
@@ -79,6 +81,12 @@ export const defaultSettings: Settings = {
     autoupdate: true,
     remindMeAboutUpdate: true,
     updateSilently: false,
+  },
+  system: {
+    autostart: false,
+  },
+  sync: {
+    code: "",
   },
   // No default apps — a fresh install starts empty; the user adds their own
   // by dropping an .exe, typing a path, or picking from installed apps.
@@ -123,6 +131,14 @@ class SettingsService {
       try {
         const data = await fs.readFile(SETTINGS_FILE, "utf-8");
         this.settings = deepMerge(defaultSettings, JSON.parse(data));
+        // Migration: drop legacy media settings that no longer apply (media is
+        // streamed, not cached) so they stop showing in the Settings modal.
+        const m = this.settings.media as Record<string, unknown>;
+        if (m && ("cacheLimitGB" in m || "preloadNext" in m)) {
+          delete m.cacheLimitGB;
+          delete m.preloadNext;
+          await this.save();
+        }
       } catch (err) {
         logger.error("Failed to load settings", err);
       }

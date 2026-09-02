@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { icons as lucideIcons, Search, X } from "lucide-react";
+import { useModalLayer, Focusable } from "../../navigation/Focusable";
 
 // All lucide icon names (PascalCase). ~1500 of them, so we only render the
 // matches for the current search (capped) to stay fast.
@@ -10,8 +11,9 @@ const ALL_NAMES = Object.keys(lucideIcons).filter(
 
 const CAP = 240;
 
-// Mouse-first modal. Pure overlay, intentionally NOT in the gamepad focus graph
-// (icon editing is a desktop/mouse task). onPick(name) → caller stores the name.
+// Navigable modal: the icon grid is a gamepad focus graph (and it's a real
+// scroll container, so the engine's scrollIntoView keeps the focused icon in
+// view). onPick(name) → caller stores the name.
 export function IconPicker({
   current,
   onPick,
@@ -22,6 +24,8 @@ export function IconPicker({
   onClose: () => void;
 }) {
   const [q, setQ] = useState("");
+  useModalLayer("iconpicker", true, onClose);
+  const L = "iconpicker";
 
   const matches = useMemo(() => {
     const needle = q.trim().toLowerCase();
@@ -53,12 +57,14 @@ export function IconPicker({
           <span className="text-[10px] font-black uppercase tracking-widest text-gray-600">
             {matches.length === CAP ? `${CAP}+` : matches.length} shown
           </span>
-          <button
-            onClick={onClose}
-            className="ml-auto w-8 h-8 flex items-center justify-center rounded-xl bg-white/5 border border-white/10 text-gray-400 hover:text-white hover:bg-white/10"
+          <Focusable
+            id="iconpicker-close"
+            layer={L}
+            onSelect={onClose}
+            className="ml-auto w-8 h-8 flex items-center justify-center rounded-xl bg-white/5 border border-white/10 text-gray-400 hover:text-white hover:bg-white/10 cursor-pointer"
           >
             <X size={14} />
-          </button>
+          </Focusable>
         </div>
 
         <div className="px-5 py-3 border-b border-white/5">
@@ -79,25 +85,30 @@ export function IconPicker({
 
         <div className="flex-1 overflow-y-auto p-4 custom-scroll">
           <div className="grid grid-cols-8 gap-2 sm:grid-cols-10">
-            {matches.map((name) => {
+            {matches.map((name, i) => {
               const Ico = lucideIcons[name as keyof typeof lucideIcons] as any;
               const active = name === current;
               return (
-                <button
+                <Focusable
                   key={name}
+                  id={`icon-${name}`}
+                  layer={L}
+                  // Land on the current icon, else the first match.
+                  initial={current ? active : i === 0}
                   title={name}
-                  onClick={() => {
+                  onSelect={() => {
                     onPick(name);
                     onClose();
                   }}
-                  className={`aspect-square flex items-center justify-center rounded-xl border transition-colors ${
+                  focusedClassName="ring-2 ring-indigo-400 text-white bg-white/10"
+                  className={`aspect-square flex items-center justify-center rounded-xl border transition-colors cursor-pointer ${
                     active
                       ? "bg-indigo-500/25 border-indigo-400/60 text-white"
                       : "bg-white/[0.03] border-white/8 text-gray-400 hover:text-white hover:bg-white/10 hover:border-white/20"
                   }`}
                 >
                   <Ico size={20} />
-                </button>
+                </Focusable>
               );
             })}
           </div>

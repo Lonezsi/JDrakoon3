@@ -18,6 +18,7 @@ class NullInputBackend implements InputBackend {
   tapKey() {}
   type() {}
   combo() {}
+  comboClick() {}
 }
 
 export function createInputBackend(): InputBackend {

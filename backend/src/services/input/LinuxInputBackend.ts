@@ -139,4 +139,20 @@ export class LinuxInputBackend implements InputBackend {
     // xdotool and ydotool both accept "ctrl+c" style specs for `key`.
     this.run(["key", spec]);
   }
+
+  comboClick(mods: string[], button: "left" | "right") {
+    const n = button === "right" ? "3" : "1";
+    if (this.tool === "xdotool") {
+      const ks = mods.map((m) => MOD_MAP[m.toLowerCase()]).filter(Boolean);
+      // One invocation: hold mods, click, release mods.
+      const args: string[] = [];
+      for (const k of ks) args.push("keydown", k);
+      args.push("click", n);
+      for (const k of ks) args.push("keyup", k);
+      this.run(args);
+    } else {
+      // ydotool modifier-hold-during-click is fiddly — best-effort plain click.
+      this.click(button);
+    }
+  }
 }

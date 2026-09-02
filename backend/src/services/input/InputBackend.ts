@@ -60,4 +60,7 @@ export interface InputBackend {
 
   /** Hold `mods` (e.g. ["ctrl","shift"]) while tapping `key` (e.g. "c"). */
   combo(mods: string[], key: string): void;
+
+  /** Hold `mods` while doing a mouse click — e.g. ".ctrl click" → Ctrl+Click. */
+  comboClick(mods: string[], button: "left" | "right"): void;
 }

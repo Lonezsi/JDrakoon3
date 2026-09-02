@@ -25,10 +25,17 @@ public static class NativeInput {
   [DllImport("user32.dll")] public static extern void keybd_event(byte vk, byte scan, uint flags, IntPtr extra);
   [DllImport("user32.dll")] public static extern bool SetCursorPos(int x, int y);
   [DllImport("user32.dll")] public static extern bool GetCursorPos(out POINT p);
+  [DllImport("user32.dll")] public static extern bool GetCursorInfo(ref CURSORINFO pci);
+  [DllImport("user32.dll")] public static extern int ShowCursor(bool show);
   [StructLayout(LayoutKind.Sequential)] public struct POINT { public int X; public int Y; }
+  [StructLayout(LayoutKind.Sequential)] public struct CURSORINFO { public int cbSize; public int flags; public IntPtr hCursor; public POINT ptScreenPos; }
   const uint LEFTDOWN = 0x0002, LEFTUP = 0x0004, RIGHTDOWN = 0x0008, RIGHTUP = 0x0010, WHEEL = 0x0800;
   const uint KEYUP = 0x0002;
-  public static void Move(int dx, int dy) { POINT p; GetCursorPos(out p); SetCursorPos(p.X + dx, p.Y + dy); }
+  public static void Move(int dx, int dy) {
+    POINT p; GetCursorPos(out p); SetCursorPos(p.X + dx, p.Y + dy);
+    CURSORINFO ci = new CURSORINFO(); ci.cbSize = Marshal.SizeOf(typeof(CURSORINFO));
+    if (GetCursorInfo(ref ci) && (ci.flags & 0x00000001) == 0) ShowCursor(true);
+  }
   public static void Click(bool right) {
     if (right) { mouse_event(RIGHTDOWN,0,0,0,IntPtr.Zero); mouse_event(RIGHTUP,0,0,0,IntPtr.Zero); }
     else { mouse_event(LEFTDOWN,0,0,0,IntPtr.Zero); mouse_event(LEFTUP,0,0,0,IntPtr.Zero); }
@@ -127,6 +134,19 @@ while (($line = [Console]::In.ReadLine()) -ne $null) {
         [array]::Reverse($modVks)
         foreach ($v in $modVks) { [NativeInput]::Up($v) }
       }
+      'Y' {
+        # Modified mouse click: "<mods|-> <left|right>" e.g. "ctrl left".
+        # Mods held while a single click fires, then released.
+        $parts = $rest.Split(' ')
+        $modNames = if ($parts[0] -eq '-') { @() } else { $parts[0].Split('+') }
+        $btn = if ($parts.Length -ge 2) { $parts[1] } else { 'left' }
+        $modVks = @()
+        foreach ($m in $modNames) { if ($m -ne '') { $v = Get-Vk $m; if ($v -ne 0) { $modVks += $v } } }
+        foreach ($v in $modVks) { [NativeInput]::Down($v) }
+        [NativeInput]::Click($btn -eq 'right')
+        [array]::Reverse($modVks)
+        foreach ($v in $modVks) { [NativeInput]::Up($v) }
+      }
       'T' { Send-Text ($enc.GetString([Convert]::FromBase64String($rest))) }
     }
   } catch {}
@@ -145,7 +165,14 @@ export class WindowsInputBackend implements InputBackend {
 
     this.proc = spawn(
       "powershell.exe",
-      ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", PS_SCRIPT],
+      [
+        "-NoProfile",
+        "-NonInteractive",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-Command",
+        PS_SCRIPT,
+      ],
       { stdio: ["pipe", "ignore", "pipe"] },
     );
 
@@ -204,5 +231,13 @@ export class WindowsInputBackend implements InputBackend {
     const modStr = mods.length ? mods.join("+") : "";
     const safe = (modStr + " " + key).replace(/[^a-z0-9+ ]/g, "").trim();
     if (safe) this.write(`X ${safe}`);
+  }
+  comboClick(mods: string[], button: "left" | "right") {
+    const m = mods
+      .map((x) => x.toLowerCase().replace(/[^a-z0-9]/g, ""))
+      .filter(Boolean);
+    this.write(
+      `Y ${m.length ? m.join("+") : "-"} ${button === "right" ? "right" : "left"}`,
+    );
   }
 }

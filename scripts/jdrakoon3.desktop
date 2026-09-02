@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=JDrakoon3
+Comment=Couch-gaming console dashboard
+# Edit Exec/Icon to the absolute install path, then copy to
+#   ~/.local/share/applications/   (menu entry)  and/or
+#   ~/.config/autostart/           (launch at login — mirrors the Windows autorun)
+Exec=node /opt/jdrakoon3/launcher.mjs
+Icon=/opt/jdrakoon3/drakoon.ico
+Terminal=false
+Categories=Game;

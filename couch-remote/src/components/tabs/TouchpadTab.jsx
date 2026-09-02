@@ -52,6 +52,26 @@ function HoldKeyBtn({ label, onFire, accent }) {
 const HOLD_MS = 280; // hold this long without moving to grab
 const HOLD_SLOP_PX = 12; // movement beyond this cancels the hold
 
+// Combo autocomplete: when the line starts with ".", suggest the next token.
+// Modifiers first, then named keys, then mouse actions (held-modifier clicks).
+const COMBO_TOKENS = [
+  "ctrl", "shift", "alt", "win",
+  "enter", "esc", "tab", "space", "backspace", "delete",
+  "up", "down", "left", "right", "home", "end", "pageup", "pagedown", "insert",
+  "f1", "f2", "f3", "f4", "f5", "f6", "f7", "f8", "f9", "f10", "f11", "f12",
+  "click", "rightclick",
+];
+
+function comboSuggestions(text) {
+  if (!text.startsWith(".")) return [];
+  const tokens = text.slice(1).split(/\s+/);
+  const last = (tokens[tokens.length - 1] || "").toLowerCase();
+  const chosen = new Set(tokens.slice(0, -1).map((t) => t.toLowerCase()));
+  return COMBO_TOKENS.filter(
+    (c) => !chosen.has(c) && c.startsWith(last),
+  ).slice(0, 10);
+}
+
 export default function TouchpadTab() {
   const [inputText, setInputText] = useState("");
   const [twoFinger, setTwoFinger] = useState(false);
@@ -59,6 +79,16 @@ export default function TouchpadTab() {
   const [ripples, setRipples] = useState([]); // instant visual feedback on touch
   const rippleId = useRef(0);
   const touchRef = useRef(null);
+  const inputRef = useRef(null);
+
+  const suggestions = comboSuggestions(inputText);
+  // Replace the token being typed with a tapped suggestion, keep the keyboard up.
+  const completeCombo = (cand) => {
+    const tokens = inputText.slice(1).split(/\s+/);
+    tokens[tokens.length - 1] = cand;
+    setInputText("." + tokens.join(" ") + " ");
+    inputRef.current?.focus();
+  };
 
   const spawnRipple = (clientX, clientY) => {
     const el = touchRef.current;
@@ -237,6 +267,25 @@ export default function TouchpadTab() {
         `}</style>
       </div>
 
+      {/* Combo autocomplete — chips for the next token when typing ".…" */}
+      {suggestions.length > 0 && (
+        <div className="flex gap-1.5 overflow-x-auto pb-0.5 -mb-1">
+          {suggestions.map((s) => (
+            <button
+              key={s}
+              onPointerDown={(e) => {
+                e.preventDefault();
+                completeCombo(s);
+              }}
+              className="flex-shrink-0 px-2.5 py-1 rounded-lg bg-indigo-500/15 border border-indigo-400/30 text-indigo-200 text-[11px] font-black active:scale-95"
+              style={{ touchAction: "manipulation" }}
+            >
+              {s}
+            </button>
+          ))}
+        </div>
+      )}
+
       <div className="flex flex-col landscape:flex-row gap-2">
         {/* Utility row — hold any key for auto-repeat */}
         <div className="flex flex-wrap gap-1.5 flex-1">
@@ -262,11 +311,12 @@ export default function TouchpadTab() {
         <div className="flex gap-1.5 items-center flex-1">
           <Keyboard size={15} className="text-slate-400 flex-shrink-0" />
           <input
+            ref={inputRef}
             type="text"
             value={inputText}
             onChange={(e) => setInputText(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && sendText()}
-            placeholder="Type to send · .ctrl c for a combo"
+            placeholder="Type to send · .ctrl c · .ctrl click"
             className="flex-1 rounded-xl px-3 py-2.5 text-xs font-bold outline-none"
             style={{
               background: "rgba(255,255,255,0.05)",

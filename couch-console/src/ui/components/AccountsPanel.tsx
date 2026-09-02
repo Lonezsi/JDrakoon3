@@ -8,10 +8,18 @@ import {
   Gamepad2,
   ListVideo,
   ArrowUp,
+  ArrowDown,
+  ChevronDown,
+  History,
+  Unplug,
   icons as lucideIcons,
 } from "lucide-react";
-import { subscribe } from "../../services/socket";
+import { subscribe, getSocket } from "../../services/socket";
+import { confirm } from "../../services/confirmService";
+import { useModalLayer, Focusable } from "../../navigation/Focusable";
 import { IconPicker } from "./IconPicker";
+import { FocusInput } from "./FocusInput";
+import { Dropdown } from "./Dropdown";
 import { MappingEditor } from "./MappingEditor";
 import {
   defaultProfileFor,
@@ -27,7 +35,12 @@ interface Account {
   colorHex: string;
   icon: string;
   createdAt: number;
-  stats: { appsLaunched: number; videosQueued: number; jumps: number };
+  stats: {
+    appsLaunched: number;
+    videosQueued: number;
+    jumps: number;
+    slams?: number;
+  };
   history: { type: string; label: string; at: number }[];
 }
 interface AccountsState {
@@ -47,7 +60,13 @@ const PALETTE = [
   "#f97316",
 ];
 
-function Avatar({ acc, size = 44 }: { acc: { icon: string; colorHex: string; gamertag: string }; size?: number }) {
+function Avatar({
+  acc,
+  size = 44,
+}: {
+  acc: { icon: string; colorHex: string; gamertag: string };
+  size?: number;
+}) {
   const Ico = lucideIcons[acc.icon as keyof typeof lucideIcons] as any;
   return (
     <div
@@ -79,10 +98,13 @@ export function AccountsPanel({
   open,
   onClose,
   players = [],
+  focusDeviceId = null,
 }: {
   open: boolean;
   onClose: () => void;
   players?: Player[];
+  /** When opened by clicking a lobby cube, the player id to scroll to + flash. */
+  focusDeviceId?: string | null;
 }) {
   const [data, setData] = useState<AccountsState>({
     accounts: [],
@@ -112,8 +134,24 @@ export function AccountsPanel({
   }, []);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
-  const [form, setForm] = useState({ gamertag: "", colorHex: PALETTE[0], icon: "User" });
+  const [form, setForm] = useState({
+    gamertag: "",
+    colorHex: PALETTE[0],
+    icon: "User",
+  });
   const [pickingIcon, setPickingIcon] = useState(false);
+  // Account history is collapsed by default — expand per account on demand.
+  const [expandedHistory, setExpandedHistory] = useState<Set<string>>(
+    new Set(),
+  );
+  const toggleHistory = (id: string, e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    setExpandedHistory((prev) => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  };
 
   const load = useCallback(() => {
     fetch("/api/accounts")
@@ -143,6 +181,24 @@ export function AccountsPanel({
     });
     return unsub;
   }, [open, load, loadInput]);
+
+  // Clicking a lobby cube opens us focused on that device — scroll its row into
+  // view and flash a ring so it's obvious which one.
+  const [flashId, setFlashId] = useState<string | null>(null);
+  useEffect(() => {
+    if (!open || !focusDeviceId) return;
+    setFlashId(focusDeviceId);
+    const raf = requestAnimationFrame(() => {
+      document
+        .querySelector(`[data-device="${focusDeviceId}"]`)
+        ?.scrollIntoView({ block: "center", behavior: "smooth" });
+    });
+    const t = setTimeout(() => setFlashId(null), 1800);
+    return () => {
+      cancelAnimationFrame(raf);
+      clearTimeout(t);
+    };
+  }, [open, focusDeviceId]);
 
   const api = (url: string, method: string, body?: any) =>
     fetch(url, {
@@ -184,6 +240,12 @@ export function AccountsPanel({
   };
   const editorOpen = creating || editingId !== null;
 
+  const isCustomColor = !PALETTE.includes(form.colorHex);
+
+  // Trap gamepad/keyboard navigation in the panel while it's open; back closes.
+  useModalLayer("accounts", open, onClose);
+  const L = "accounts"; // focus layer for everything below
+
   return (
     <>
       {/* backdrop */}
@@ -207,12 +269,16 @@ export function AccountsPanel({
           <h2 className="text-2xl font-black italic uppercase tracking-tight text-white">
             Accounts
           </h2>
-          <button
-            onClick={onClose}
-            className="w-8 h-8 flex items-center justify-center rounded-xl bg-white/5 border border-white/10 text-gray-400 hover:text-white hover:bg-white/10"
+          <Focusable
+            id="acc-close"
+            layer={L}
+            enabled={open}
+            title="Close"
+            onSelect={onClose}
+            className="w-8 h-8 flex items-center justify-center rounded-xl bg-white/5 border border-white/10 text-gray-400 hover:text-white hover:bg-white/10 cursor-pointer"
           >
             <X size={14} />
-          </button>
+          </Focusable>
         </div>
 
         <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3 custom-scroll">
@@ -225,9 +291,16 @@ export function AccountsPanel({
           {data.accounts.map((a) => {
             const active = a.id === data.activeId;
             return (
-              <div
+              <Focusable
                 key={a.id}
-                onClick={() => api("/api/accounts/active", "POST", { id: a.id })}
+                id={`acc-${a.id}`}
+                layer={L}
+                enabled={open}
+                initial={active}
+                onSelect={() =>
+                  api("/api/accounts/active", "POST", { id: a.id })
+                }
+                focusedClassName="ring-2 ring-indigo-400"
                 className={`group rounded-2xl border p-3 cursor-pointer transition-all ${
                   active
                     ? "border-indigo-400/50 bg-indigo-500/10"
@@ -257,54 +330,87 @@ export function AccountsPanel({
                       <span className="inline-flex items-center gap-1">
                         <ArrowUp size={11} /> {a.stats.jumps}
                       </span>
+                      <span className="inline-flex items-center gap-1">
+                        <ArrowDown size={11} /> {a.stats.slams ?? 0}
+                      </span>
                     </div>
                   </div>
-                  <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <button
-                      title="Edit"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        startEdit(a);
-                      }}
-                      className="w-7 h-7 flex items-center justify-center rounded-lg bg-white/5 border border-white/10 text-gray-300 hover:text-white"
+                  <div className="flex gap-1">
+                    <Focusable
+                      id={`acc-${a.id}-edit`}
+                      layer={L}
+                      enabled={open}
+                      title="Edit account"
+                      onSelect={() => startEdit(a)}
+                      className="w-7 h-7 flex items-center justify-center rounded-lg bg-white/5 border border-white/10 text-gray-300 hover:text-white cursor-pointer"
                     >
                       <Pencil size={12} />
-                    </button>
-                    <button
-                      title="Delete"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        if (window.confirm(`Delete "${a.gamertag}"?`))
-                          api(`/api/accounts/${a.id}`, "DELETE");
-                      }}
-                      className="w-7 h-7 flex items-center justify-center rounded-lg bg-white/5 border border-white/10 text-red-400 hover:text-red-300"
+                    </Focusable>
+                    <Focusable
+                      id={`acc-${a.id}-del`}
+                      layer={L}
+                      enabled={open}
+                      title="Delete account"
+                      focusedClassName="ring-2 ring-red-400"
+                      onSelect={() =>
+                        confirm({
+                          title: `Delete "${a.gamertag}"?`,
+                          message: "This removes the account and its stats.",
+                          confirmText: "Delete",
+                          danger: true,
+                        }).then((ok) => {
+                          if (ok) api(`/api/accounts/${a.id}`, "DELETE");
+                        })
+                      }
+                      className="w-7 h-7 flex items-center justify-center rounded-lg bg-white/5 border border-white/10 text-red-400 hover:text-red-300 cursor-pointer"
                     >
                       <Trash2 size={12} />
-                    </button>
+                    </Focusable>
                   </div>
                 </div>
 
                 {a.history.length > 0 && (
-                  <div className="mt-3 pt-2 border-t border-white/5 space-y-1">
-                    {a.history.slice(0, 4).map((h, i) => (
-                      <div
-                        key={i}
-                        className="flex items-center justify-between text-[10px]"
-                      >
-                        <span className="text-gray-400 truncate mr-2">
-                          <span className="text-gray-600 uppercase font-black mr-1.5">
-                            {h.type === "queue" ? "Queued" : "Launched"}
-                          </span>
-                          {h.label}
-                        </span>
-                        <span className="text-gray-700 flex-shrink-0">
-                          {timeAgo(h.at)}
-                        </span>
+                  <div className="mt-2 pt-2 border-t border-white/5">
+                    <Focusable
+                      id={`acc-${a.id}-hist`}
+                      layer={L}
+                      enabled={open}
+                      onSelect={() => toggleHistory(a.id)}
+                      className="w-full flex items-center justify-between text-[10px] font-black uppercase tracking-widest text-gray-500 hover:text-gray-300 cursor-pointer rounded-lg"
+                    >
+                      <span className="inline-flex items-center gap-1.5">
+                        <History size={11} /> History ({a.history.length})
+                      </span>
+                      <ChevronDown
+                        size={13}
+                        className={`transition-transform ${
+                          expandedHistory.has(a.id) ? "rotate-180" : ""
+                        }`}
+                      />
+                    </Focusable>
+                    {expandedHistory.has(a.id) && (
+                      <div className="mt-2 space-y-1">
+                        {a.history.slice(0, 12).map((h, i) => (
+                          <div
+                            key={i}
+                            className="flex items-center justify-between text-[10px]"
+                          >
+                            <span className="text-gray-400 truncate mr-2">
+                              <span className="text-gray-600 uppercase font-black mr-1.5">
+                                {h.type === "queue" ? "Queued" : "Launched"}
+                              </span>
+                              {h.label}
+                            </span>
+                            <span className="text-gray-700 flex-shrink-0">
+                              {timeAgo(h.at)}
+                            </span>
+                          </div>
+                        ))}
                       </div>
-                    ))}
+                    )}
                   </div>
                 )}
-              </div>
+              </Focusable>
             );
           })}
 
@@ -335,7 +441,12 @@ export function AccountsPanel({
                   return (
                     <div
                       key={p.id}
-                      className="rounded-xl border border-white/8 bg-white/[0.02] px-3 py-2 space-y-1.5"
+                      data-device={p.id}
+                      className={`rounded-xl border px-3 py-2 space-y-1.5 transition-all duration-300 ${
+                        flashId === p.id
+                          ? "border-indigo-400/60 bg-indigo-500/10 ring-2 ring-indigo-400"
+                          : "border-white/8 bg-white/[0.02]"
+                      }`}
                     >
                       <div className="flex items-center gap-2.5">
                         <span
@@ -348,31 +459,41 @@ export function AccountsPanel({
                         <span className="text-[9px] font-black uppercase tracking-widest text-gray-600">
                           {kind || p.deviceType || "phone"}
                         </span>
+                        <button
+                          data-tip="Disconnect this device from the lobby"
+                          onClick={() =>
+                            getSocket()?.emit("kick_player", { playerId: p.id })
+                          }
+                          className="w-7 h-7 flex items-center justify-center rounded-lg bg-white/5 border border-white/10 text-gray-400 hover:text-red-300 hover:border-red-400/30 flex-shrink-0"
+                        >
+                          <Unplug size={12} />
+                        </button>
                       </div>
                       <div className="flex items-center gap-1.5">
-                        <select
+                        <Dropdown
+                          title="Playing as"
                           value={assignedId}
-                          onChange={(e) =>
+                          onChange={(v) =>
                             api("/api/accounts/assign", "POST", {
                               deviceId: p.id,
-                              accountId: e.target.value || null,
+                              accountId: v || null,
                             })
                           }
-                          title="Playing as"
-                          className="flex-1 min-w-0 bg-white/5 border border-white/10 rounded-lg px-2 py-1 text-[11px] font-bold text-white outline-none focus:border-indigo-500/40"
-                        >
-                          <option value="">— No account —</option>
-                          {data.accounts.map((a) => (
-                            <option key={a.id} value={a.id}>
-                              {a.gamertag}
-                            </option>
-                          ))}
-                        </select>
+                          options={[
+                            { value: "", label: "— No account —" },
+                            ...data.accounts.map((a) => ({
+                              value: a.id,
+                              label: a.gamertag,
+                            })),
+                          ]}
+                          className="flex-1 min-w-0 inline-flex items-center justify-between gap-1.5 bg-white/5 border border-white/10 rounded-lg px-2 py-1 text-[11px] font-bold text-white hover:bg-white/10"
+                        />
                         {devId && (
                           <>
-                            <select
+                            <Dropdown
+                              title="Control mapping"
                               value={assignedMapping}
-                              onChange={(e) =>
+                              onChange={(v) =>
                                 fetch("/api/settings", {
                                   method: "PATCH",
                                   headers: {
@@ -380,29 +501,19 @@ export function AccountsPanel({
                                   },
                                   body: JSON.stringify({
                                     input: {
-                                      devices: {
-                                        [devId]: { mapping: e.target.value },
-                                      },
+                                      devices: { [devId]: { mapping: v } },
                                     },
                                   }),
                                 }).then(() => loadInput())
                               }
-                              title="Control mapping"
-                              className="flex-1 min-w-0 bg-white/5 border border-white/10 rounded-lg px-2 py-1 text-[11px] font-bold text-indigo-200 outline-none focus:border-indigo-500/40"
-                            >
-                              {!profileNames.includes(assignedMapping) && (
-                                <option value={assignedMapping}>
-                                  {assignedMapping}
-                                </option>
-                              )}
-                              {profileNames.map((n) => (
-                                <option key={n} value={n}>
-                                  {n}
-                                </option>
-                              ))}
-                            </select>
+                              options={(profileNames.includes(assignedMapping)
+                                ? profileNames
+                                : [assignedMapping, ...profileNames]
+                              ).map((n) => ({ value: n, label: n }))}
+                              className="flex-1 min-w-0 inline-flex items-center justify-between gap-1.5 bg-white/5 border border-white/10 rounded-lg px-2 py-1 text-[11px] font-bold text-indigo-200 hover:bg-white/10"
+                            />
                             <button
-                              title="Edit mapping"
+                              data-tip="Edit this device's controls"
                               onClick={() =>
                                 setMappingFor({
                                   deviceId: devId,
@@ -432,19 +543,22 @@ export function AccountsPanel({
               <div className="flex items-center gap-2">
                 <button
                   onClick={() => setPickingIcon(true)}
-                  title="Choose icon"
+                  data-tip="Choose an icon"
                   className="flex-shrink-0"
                 >
                   <Avatar acc={form} />
                 </button>
-                <input
-                  autoFocus
+                <FocusInput
+                  id="acc-form-name"
+                  layer={L}
+                  initial
+                  wrapperClassName="flex-1"
                   value={form.gamertag}
-                  onChange={(e) => setForm({ ...form, gamertag: e.target.value })}
-                  onKeyDown={(e) => e.key === "Enter" && submitForm()}
+                  onChange={(v) => setForm({ ...form, gamertag: v })}
+                  onEnter={submitForm}
                   placeholder="Gamertag"
                   maxLength={24}
-                  className="flex-1 bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-sm text-white outline-none focus:border-indigo-500/40"
+                  className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-sm text-white outline-none focus:border-indigo-500/40"
                 />
               </div>
               <div className="flex items-center gap-1.5 flex-wrap">
@@ -461,30 +575,79 @@ export function AccountsPanel({
                     }}
                   />
                 ))}
-                <input
-                  type="color"
-                  value={form.colorHex}
-                  onChange={(e) => setForm({ ...form, colorHex: e.target.value })}
-                  className="w-6 h-6 rounded-full border border-white/10 bg-transparent cursor-pointer"
-                  style={{ padding: 0 }}
-                />
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  {/*PALETTE.map((c) => (
+                    <button
+                      key={c}
+                      onClick={() => setForm({ ...form, colorHex: c })}
+                      className="w-6 h-6 rounded-full transition-transform"
+                      style={{
+                        background: c,
+                        outline:
+                          form.colorHex === c ? "2px solid white" : "none",
+                        outlineOffset: 2,
+                        transform: form.colorHex === c ? "scale(1.1)" : "none",
+                      }}
+                    />
+                  ))*/}
+
+                  {/* CUSTOM COLOUR PICKER (replaces old <input type="color">) */}
+                  <div className="relative w-6 h-6 flex-shrink-0">
+                    <input
+                      type="color"
+                      value={form.colorHex}
+                      onChange={(e) =>
+                        setForm({ ...form, colorHex: e.target.value })
+                      }
+                      className="absolute inset-0 opacity-0 cursor-pointer z-10"
+                    />
+                    <div
+                      className="w-6 h-6 rounded-full border-2 border-dashed border-slate-500 flex items-center justify-center transition-all pointer-events-none"
+                      style={{
+                        backgroundColor: isCustomColor
+                          ? form.colorHex
+                          : "transparent",
+                        boxShadow: isCustomColor
+                          ? `0 0 0 3px #06060c, 0 0 0 5.5px ${form.colorHex}`
+                          : "none",
+                        transform: isCustomColor ? "scale(1.18)" : "scale(1)",
+                      }}
+                    >
+                      {isCustomColor ? (
+                        <Check
+                          size={15}
+                          className="text-white"
+                          strokeWidth={3}
+                        />
+                      ) : (
+                        <span className="text-white text-xs font-black">+</span>
+                      )}
+                    </div>
+                  </div>
+                </div>
               </div>
               <div className="flex justify-end gap-2">
-                <button
-                  onClick={() => {
+                <Focusable
+                  id="acc-form-cancel"
+                  layer={L}
+                  enabled={open && editorOpen}
+                  onSelect={() => {
                     setCreating(false);
                     setEditingId(null);
                   }}
-                  className="px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest text-gray-400 hover:text-white"
+                  className="px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest text-gray-400 hover:text-white cursor-pointer"
                 >
                   Cancel
-                </button>
-                <button
-                  onClick={submitForm}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-[10px] font-black uppercase tracking-widest text-white"
+                </Focusable>
+                <Focusable
+                  id="acc-form-save"
+                  layer={L}
+                  enabled={open && editorOpen}
+                  onSelect={submitForm}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-[10px] font-black uppercase tracking-widest text-white cursor-pointer"
                 >
                   <Check size={12} /> {creating ? "Create" : "Save"}
-                </button>
+                </Focusable>
               </div>
             </div>
           )}
@@ -492,12 +655,15 @@ export function AccountsPanel({
 
         {!editorOpen && (
           <div className="px-4 py-4 border-t border-white/5">
-            <button
-              onClick={startCreate}
-              className="w-full inline-flex items-center justify-center gap-2 py-2.5 rounded-2xl bg-indigo-600 hover:bg-indigo-500 text-[11px] font-black uppercase tracking-widest text-white"
+            <Focusable
+              id="acc-new"
+              layer={L}
+              enabled={open && !editorOpen}
+              onSelect={startCreate}
+              className="w-full inline-flex items-center justify-center gap-2 py-2.5 rounded-2xl bg-indigo-600 hover:bg-indigo-500 text-[11px] font-black uppercase tracking-widest text-white cursor-pointer"
             >
               <Plus size={14} /> New account
-            </button>
+            </Focusable>
           </div>
         )}
       </div>

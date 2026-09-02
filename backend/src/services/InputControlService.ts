@@ -136,6 +136,20 @@ class InputControlService {
     if (tokens.length === 0) return;
     const key = tokens[tokens.length - 1];
     const mods = tokens.slice(0, -1);
+    // A trailing mouse action (".ctrl click") holds the modifiers while
+    // clicking, rather than tapping a (nonexistent) "click" key.
+    const mouse: Record<string, "left" | "right"> = {
+      click: "left",
+      leftclick: "left",
+      lclick: "left",
+      rightclick: "right",
+      rclick: "right",
+      rightclic: "right",
+    };
+    if (mouse[key]) {
+      this.backend.comboClick(mods, mouse[key]);
+      return;
+    }
     this.backend.combo(mods, key);
   }
 }

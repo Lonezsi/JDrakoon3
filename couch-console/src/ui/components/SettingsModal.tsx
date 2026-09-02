@@ -4,6 +4,8 @@ import React from "react";
 import { useFocus, useFocusable } from "../../navigation/FocusContext";
 import { MappingEditor } from "./MappingEditor";
 import { defaultProfileFor, deviceKind } from "../../services/deviceSettings";
+import { confirm } from "../../services/confirmService";
+import { Dropdown } from "./Dropdown";
 
 // ---------- helpers ----------
 
@@ -114,7 +116,7 @@ function ResetBtn({ onReset }: { onReset: () => void }) {
   return (
     <button
       onClick={onReset}
-      title="Reset to default"
+      data-tip="Reset to default"
       className="flex-shrink-0 text-yellow-400/50 hover:text-yellow-400 transition-colors p-2 -m-1"
     >
       <RotateCcw size={11} />
@@ -336,8 +338,10 @@ function SettingRow({
 
   const isVolume = path.toLowerCase().includes("volume");
   const isDeadzone = path.toLowerCase().includes("deadzone");
-  const max = isVolume ? 100 : isDeadzone ? 1 : 1000;
-  const step = isVolume ? 1 : 0.01;
+  const isIntensity = path.toLowerCase().includes("intensity");
+  const isPercent = isVolume || isIntensity; // 0–100 sliders, whole steps
+  const max = isPercent ? 100 : isDeadzone ? 1 : 1000;
+  const step = isPercent ? 1 : 0.01;
 
   // A / Enter toggles a boolean setting.
   const onSelect = isBoolean ? () => onUpdate(!value) : undefined;
@@ -427,13 +431,15 @@ function SettingRow({
 
 export const SettingsModal = React.memo(function SettingsModal({
   onClose,
+  initialSearch,
 }: {
   onClose: () => void;
+  initialSearch?: string;
 }) {
   const [settings, setSettings] = useState<Record<string, any> | null>(null);
   const [defaults, setDefaults] = useState<Record<string, any> | null>(null);
   const [descriptions, setDescriptions] = useState<Record<string, string>>({});
-  const [search, setSearch] = useState("");
+  const [search, setSearch] = useState(initialSearch || "");
   const [mappingFor, setMappingFor] = useState<{
     deviceId: string;
     label: string;
@@ -447,6 +453,11 @@ export const SettingsModal = React.memo(function SettingsModal({
     pushLayer("modal", onClose);
     return () => popLayer("modal");
   }, [pushLayer, popLayer, onClose]);
+
+  // Sync search term if parent changes it while modal is open
+  useEffect(() => {
+    if (initialSearch) setSearch(initialSearch);
+  }, [initialSearch]);
 
   useEffect(() => {
     fetch("/api/settings")
@@ -475,8 +486,7 @@ export const SettingsModal = React.memo(function SettingsModal({
   const allPaths = Array.from(
     new Set([...Object.keys(flatDefaults), ...Object.keys(flatCurrent)]),
   ).filter(
-    (path) =>
-      !path.startsWith("players") && !path.startsWith("input.mappings"),
+    (path) => !path.startsWith("players") && !path.startsWith("input.mappings"),
   );
 
   const filteredPaths = allPaths.filter(
@@ -523,15 +533,22 @@ export const SettingsModal = React.memo(function SettingsModal({
   // Delete an app entry (deep-merge PATCH can't remove keys → dedicated route).
   const deleteApp = (id: string) => {
     const label = settings?.apps?.[id]?.name || id;
-    if (!window.confirm(`Remove "${label}" from the library?`)) return;
-    fetch(`/api/apps/${encodeURIComponent(id)}`, { method: "DELETE" })
-      .then((r) => r.json())
-      .then(() =>
-        fetch("/api/settings")
-          .then((r) => r.json())
-          .then((data) => setSettings(data)),
-      )
-      .catch(() => {});
+    confirm({
+      title: `Remove "${label}"?`,
+      message: "This removes it from your library.",
+      confirmText: "Remove",
+      danger: true,
+    }).then((ok) => {
+      if (!ok) return;
+      fetch(`/api/apps/${encodeURIComponent(id)}`, { method: "DELETE" })
+        .then((r) => r.json())
+        .then(() =>
+          fetch("/api/settings")
+            .then((r) => r.json())
+            .then((data) => setSettings(data)),
+        )
+        .catch(() => {});
+    });
   };
 
   const resetAll = () => {
@@ -686,7 +703,7 @@ export const SettingsModal = React.memo(function SettingsModal({
                           </span>
                           <button
                             onClick={() => deleteApp(id)}
-                            title="Delete app"
+                            data-tip="Delete app"
                             className="flex items-center gap-1 text-[10px] font-black uppercase tracking-widest text-red-400/70 hover:text-red-300 transition-colors"
                           >
                             <Trash2 size={12} /> Delete
@@ -782,26 +799,21 @@ export const SettingsModal = React.memo(function SettingsModal({
                                 </span>
                               </span>
                               <div className="flex items-center gap-1.5">
-                                <select
+                                <Dropdown
+                                  title="Control mapping"
                                   value={assigned}
-                                  onChange={(e) =>
+                                  onChange={(v) =>
                                     updateField(
                                       `input.devices.${id}.mapping`,
-                                      e.target.value,
+                                      v,
                                     )
                                   }
-                                  title="Control mapping"
-                                  className="bg-white/5 border border-white/10 rounded-lg px-2 py-1 text-[11px] font-bold text-indigo-200 outline-none focus:border-indigo-500/40 max-w-[130px]"
-                                >
-                                  {!options.includes(assigned) && (
-                                    <option value={assigned}>{assigned}</option>
-                                  )}
-                                  {options.map((n) => (
-                                    <option key={n} value={n}>
-                                      {n}
-                                    </option>
-                                  ))}
-                                </select>
+                                  options={(options.includes(assigned)
+                                    ? options
+                                    : [assigned, ...options]
+                                  ).map((n) => ({ value: n, label: n }))}
+                                  className="inline-flex items-center justify-between gap-1.5 bg-white/5 border border-white/10 rounded-lg px-2 py-1 text-[11px] font-bold text-indigo-200 hover:bg-white/10 max-w-[130px]"
+                                />
                                 <button
                                   onClick={() =>
                                     setMappingFor({
@@ -809,7 +821,7 @@ export const SettingsModal = React.memo(function SettingsModal({
                                       label: deviceLabel(id),
                                     })
                                   }
-                                  title="Edit mapping"
+                                  data-tip="Edit this device's controls"
                                   className="flex items-center gap-1 text-[10px] font-black uppercase tracking-widest text-gray-400 hover:text-white transition-colors"
                                 >
                                   <Pencil size={11} /> Edit
