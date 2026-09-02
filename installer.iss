@@ -16,7 +16,7 @@
 #define MyAppName "JDrakoon3"
 #define MyAppExe  "JDrakoon3.exe"
 ; Keep in sync with the root VERSION file.
-#define MyAppVersion "3.0.5"
+#define MyAppVersion "3.0.6"
 
 [Setup]
 AppId={{A7E3F9C2-1B4D-4E8A-9F6C-2D5B8E1A4C70}

@@ -44,6 +44,10 @@ jobs:
         shell: powershell
         run: .\build-release.ps1 -Installer
 
+      - name: Name installer asset
+        shell: powershell
+        run: Copy-Item "release\installer\JDrakoon3-Setup.exe" "release\installer\JDrakoon3-Setup-${{ github.ref_name }}.exe" -Force
+
       - name: Publish GitHub pre-release
         shell: powershell
         env:

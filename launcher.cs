@@ -29,7 +29,7 @@ using Microsoft.Web.WebView2.WinForms;
 [assembly: System.Reflection.AssemblyTitle("JDrakoon3")]
 [assembly: System.Reflection.AssemblyProduct("JDrakoon3")]
 [assembly: System.Reflection.AssemblyCompany("Lonezsi")]
-[assembly: System.Reflection.AssemblyFileVersion("3.0.5")]
+[assembly: System.Reflection.AssemblyFileVersion("3.0.6")]
 
 static class Launcher
 {
