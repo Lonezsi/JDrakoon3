@@ -32,9 +32,6 @@ jobs:
             throw "The .NET Framework C# compiler is missing"
           }
 
-      - name: Set up Inno Setup
-        uses: arduino/setup-inno@v1
-
       - name: Install dependencies
         shell: powershell
         run: |
