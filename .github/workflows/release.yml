@@ -1,0 +1,61 @@
+name: Build and publish release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - name: Check out tag
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: |
+            backend/package-lock.json
+            couch-console/package-lock.json
+            couch-remote/package-lock.json
+
+      - name: Set up .NET Framework compiler
+        shell: powershell
+        run: |
+          if (-not (Test-Path "$env:WINDIR\Microsoft.NET\Framework64\v4.0.30319\csc.exe")) {
+            throw "The .NET Framework C# compiler is missing"
+          }
+
+      - name: Set up Inno Setup
+        uses: arduino/setup-inno@v1
+
+      - name: Install dependencies
+        shell: powershell
+        run: |
+          npm ci --prefix backend
+          npm ci --prefix couch-console
+          npm ci --prefix couch-remote
+
+      - name: Build installer
+        shell: powershell
+        run: .\build-release.ps1 -Installer
+
+      - name: Publish GitHub pre-release
+        shell: powershell
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $tag = "${{ github.ref_name }}"
+          $version = $tag.TrimStart('v', 'V')
+          gh release create $tag `
+            "release\installer\JDrakoon3-Setup-$tag.exe" `
+            --repo "${{ github.repository }}" `
+            --title "$tag ALPHA" `
+            --notes "Alpha build $version." `
+            --prerelease
