@@ -35,6 +35,7 @@ jobs:
       - name: Install dependencies
         shell: powershell
         run: |
+          choco install innosetup --no-progress --yes
           npm ci --prefix backend
           npm ci --prefix couch-console
           npm ci --prefix couch-remote
@@ -54,5 +55,5 @@ jobs:
             "release\installer\JDrakoon3-Setup-$tag.exe" `
             --repo "${{ github.repository }}" `
             --title "$tag ALPHA" `
-            --notes "Alpha build $version." `
+            --notes "The remote got a cursor, and releases got a proper release. Tiny miracles." `
             --prerelease
